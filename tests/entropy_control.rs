@@ -6,14 +6,15 @@ use coding_agent_monitor::{
     DispatchStatus, EntropyDelta, EntropyKind, EntropyTrend, Event, EventKind, MemorySource,
     OutcomeStatus, PacketInstruction, PacketInstructionPriority, PacketPreconditions,
     PacketUrgency, ProbeSpec, ProjectConfig, ProjectStore, RedactionStatus, RepoAuditStatus,
-    RepoChangeKind, RepoHunkHistoryEntry, RepoTraceStatus, RequirementGraphQuery,
-    RequirementSource, RuntimeValidationSurface, TraceEntry, ValidationOutcome,
-    VerificationFailureClass, VerificationRunStatus, VerificationScope, VerificationSuite,
-    VerifierRun, WorktreeLock, WorktreeLockRequest, WorktreeLockResult, adapter_capabilities_for,
-    adapter_capabilities_for_config, advise_workspace, build_control_case_file,
-    build_control_case_file_with_config, load_decision_trails, load_requirement_graph,
-    promote_memory_candidate, run_jsonl_with_store, run_probe, run_verifier,
-    validate_advisor_decision, validate_control_action, validate_control_action_detailed,
+    RepoChangeKind, RepoHunkHistoryEntry, RepoTraceStatus, RequirementEvidenceRole,
+    RequirementGraphQuery, RequirementSource, RuntimeValidationSurface, TraceEntry,
+    ValidationOutcome, VerificationFailureClass, VerificationRunStatus, VerificationScope,
+    VerificationStatus, VerificationSuite, VerifierRun, WorktreeLock, WorktreeLockRequest,
+    WorktreeLockResult, adapter_capabilities_for, adapter_capabilities_for_config,
+    advise_workspace, build_control_case_file, build_control_case_file_with_config,
+    load_decision_trails, load_requirement_graph, promote_memory_candidate, run_jsonl_with_store,
+    run_probe, run_verifier, validate_advisor_decision, validate_control_action,
+    validate_control_action_detailed,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -1061,6 +1062,71 @@ fn case_file_scopes_project_contract_requirements_from_agents_md() {
             .any(|incident| incident.kind == "requirement_scope"),
         "{:?}",
         case_file.completion_certificate
+    );
+}
+
+#[test]
+fn case_file_maps_project_contract_requirement_to_configured_verifier() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    std::fs::write(
+        temp.path().join("AGENTS.md"),
+        "# Project\n\n## Non-Negotiable Invariants\n\n- Do not send secrets, auth files, private env values, or tainted excerpts to agents, packets, logs, or the advisor.\n",
+    )
+    .expect("AGENTS.md");
+    let mut store = ProjectStore::open(temp.path()).expect("store");
+    store
+        .append_verifier_run(&coding_agent_monitor::VerifierRun {
+            verifier_run_id: "verifier-run-secret-guard".into(),
+            verifier_id: Some("secret_guard".into()),
+            command: "cargo test secret_guard".into(),
+            status: VerificationRunStatus::Passed,
+            started_at: "2026-06-22T12:00:00Z".into(),
+            completed_at: Some("2026-06-22T12:00:10Z".into()),
+            exit_code: Some(0),
+            output_digest: "ok".into(),
+            failure_class: None,
+        })
+        .expect("verifier run");
+    let snapshot = DashboardSnapshot::load(store.root(), 20).expect("snapshot");
+    let config = ProjectConfig {
+        verifiers: vec![coding_agent_monitor::VerifierConfig {
+            id: "secret_guard".into(),
+            command: "cargo test secret_guard".into(),
+            scope: VerificationScope::Targeted,
+            timeout_secs: 120,
+            paths: vec!["src/redaction.rs".into(), "tests/adapter_ingest.rs".into()],
+            acceptance_patterns: vec!["Do not send secrets".into(), "tainted excerpts".into()],
+        }],
+        ..ProjectConfig::default()
+    };
+
+    let case_file = build_control_case_file_with_config(temp.path(), &snapshot, &config);
+
+    let requirement = case_file
+        .requirements
+        .iter()
+        .find(|requirement| requirement.source == RequirementSource::ProjectContract)
+        .expect("project contract requirement");
+    assert_eq!(requirement.status, AcceptanceCoverageStatus::Covered);
+    assert_eq!(requirement.latest_status, Some(VerificationStatus::Passed));
+    assert_eq!(requirement.verifier_ids, vec!["secret_guard".to_string()]);
+    assert_eq!(
+        requirement.verifier_commands,
+        vec!["cargo test secret_guard".to_string()]
+    );
+    assert_eq!(
+        requirement.latest_verification_evidence_id.as_deref(),
+        Some("verifier-run-secret-guard")
+    );
+    assert!(
+        requirement
+            .evidence_refs
+            .iter()
+            .any(
+                |evidence| evidence.role == RequirementEvidenceRole::VerificationResult
+                    && evidence.evidence_id == "verifier-run-secret-guard"
+            ),
+        "{requirement:?}"
     );
 }
 

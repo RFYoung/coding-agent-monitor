@@ -2838,6 +2838,9 @@ pub fn build_control_case_file_with_config(
     requirements.extend(requirement_nodes_from_durable_memory(&durable_memory));
     requirements.extend(requirement_nodes_from_project_contract(
         &project_contract_scope,
+        snapshot,
+        &config.verifiers,
+        verification.status,
     ));
     let replay = case_file_replay(workspace, snapshot);
     let completion_certificate =
@@ -3239,27 +3242,63 @@ fn normalize_project_contract_requirement(text: &str) -> String {
 
 fn requirement_nodes_from_project_contract(
     requirements: &[ProjectContractRequirement],
+    snapshot: &DashboardSnapshot,
+    verifiers: &[VerifierConfig],
+    verification_status: VerificationStatus,
 ) -> Vec<RequirementNode> {
+    let criteria = requirements
+        .iter()
+        .map(|requirement| requirement.text.clone())
+        .collect::<Vec<_>>();
+    let coverage_by_criterion =
+        acceptance_coverage_for_criteria(&criteria, verifiers, snapshot, verification_status)
+            .into_iter()
+            .map(|coverage| (coverage.criterion.clone(), coverage))
+            .collect::<HashMap<_, _>>();
+    let verification_evidence = latest_verification_evidence_by_key(snapshot);
     requirements
         .iter()
-        .map(|requirement| RequirementNode {
-            requirement_id: format!(
-                "req-contract-{}",
-                safe_slug(&clean_acceptance_criterion(&requirement.text).to_ascii_lowercase())
-            ),
-            source: RequirementSource::ProjectContract,
-            text: requirement.text.clone(),
-            source_event_id: Some(requirement.evidence_id.clone()),
-            evidence_ids: vec![requirement.evidence_id.clone()],
-            evidence_refs: vec![requirement_evidence_ref(
+        .map(|requirement| {
+            let coverage = coverage_by_criterion.get(&requirement.text);
+            let latest_verification_evidence_id = coverage.and_then(|coverage| {
+                latest_requirement_verification_evidence(coverage, &verification_evidence)
+            });
+            let mut evidence_ids = vec![requirement.evidence_id.clone()];
+            let mut evidence_refs = vec![requirement_evidence_ref(
                 &requirement.evidence_id,
                 RequirementEvidenceRole::RequirementSource,
-            )],
-            verifier_ids: Vec::new(),
-            verifier_commands: Vec::new(),
-            latest_verification_evidence_id: None,
-            status: AcceptanceCoverageStatus::Unmapped,
-            latest_status: None,
+            )];
+            if let Some(evidence_id) = &latest_verification_evidence_id
+                && !evidence_ids.contains(evidence_id)
+            {
+                evidence_ids.push(evidence_id.clone());
+                evidence_refs.push(requirement_evidence_ref(
+                    evidence_id,
+                    RequirementEvidenceRole::VerificationResult,
+                ));
+            }
+            RequirementNode {
+                requirement_id: format!(
+                    "req-contract-{}",
+                    safe_slug(&clean_acceptance_criterion(&requirement.text).to_ascii_lowercase())
+                ),
+                source: RequirementSource::ProjectContract,
+                text: requirement.text.clone(),
+                source_event_id: Some(requirement.evidence_id.clone()),
+                evidence_ids,
+                evidence_refs,
+                verifier_ids: coverage
+                    .map(|coverage| coverage.verifier_ids.clone())
+                    .unwrap_or_default(),
+                verifier_commands: coverage
+                    .map(|coverage| coverage.verifier_commands.clone())
+                    .unwrap_or_default(),
+                latest_verification_evidence_id,
+                status: coverage
+                    .map(|coverage| coverage.status)
+                    .unwrap_or(AcceptanceCoverageStatus::Unmapped),
+                latest_status: coverage.and_then(|coverage| coverage.latest_status),
+            }
         })
         .collect()
 }
