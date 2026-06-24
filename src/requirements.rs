@@ -367,13 +367,13 @@ fn completion_certificate_from_requirement_report(
     let closed_requirement_ids = graph
         .requirements
         .iter()
-        .filter(|requirement| requirement.status == AcceptanceCoverageStatus::Covered)
+        .filter(|requirement| requirement_closed_for_completion(requirement, latest_proofs))
         .map(|requirement| requirement.requirement_id.clone())
         .collect::<Vec<_>>();
     let unresolved_requirement_ids = graph
         .requirements
         .iter()
-        .filter(|requirement| requirement.status != AcceptanceCoverageStatus::Covered)
+        .filter(|requirement| !requirement_closed_for_completion(requirement, latest_proofs))
         .map(|requirement| requirement.requirement_id.clone())
         .collect::<Vec<_>>();
 
@@ -505,6 +505,22 @@ fn completion_report_verification_status(
         return VerificationStatus::Passed;
     }
     VerificationStatus::NotRun
+}
+
+fn requirement_closed_for_completion(
+    requirement: &RequirementNode,
+    latest_proofs: &[RequirementProofStep],
+) -> bool {
+    match requirement.status {
+        AcceptanceCoverageStatus::Covered => true,
+        AcceptanceCoverageStatus::Failed | AcceptanceCoverageStatus::Stale => false,
+        AcceptanceCoverageStatus::Unverified | AcceptanceCoverageStatus::Unmapped => latest_proofs
+            .iter()
+            .find(|proof| proof.requirement_id == requirement.requirement_id)
+            .is_some_and(|proof| {
+                proof.proof_strength.gaps.is_empty() && proof.proof_strength.score >= 80
+            }),
+    }
 }
 
 fn completion_report_verifier_commands(requirements: &[RequirementNode]) -> Vec<String> {

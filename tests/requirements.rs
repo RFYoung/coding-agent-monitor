@@ -256,6 +256,148 @@ fn completion_certificate_report_preserves_global_verification_when_requirements
 }
 
 #[test]
+fn completion_certificate_report_closes_unmapped_requirement_with_gapless_proof() {
+    let temp = tempfile::tempdir().expect("workspace");
+    let mut store = ProjectStore::open(temp.path()).expect("store");
+    store
+        .append_trace(&TraceEntry {
+            time: Some("2026-06-22T12:00:00Z".into()),
+            event_id: Some("evt-source-req-api".into()),
+            agent: "codex".into(),
+            session: Some("s1".into()),
+            file: "src/lib.rs".into(),
+            line: Some(10),
+            line_end: Some(12),
+            rationale: Some("Implement the API advisor requirement.".into()),
+            related_event_ids: vec!["evt-user-api".into()],
+            ..TraceEntry::default()
+        })
+        .expect("trace");
+    store
+        .append_repo_hunk_history(&RepoHunkHistoryEntry {
+            history_id: "hunk-req-api".into(),
+            observed_at: "2026-06-22T12:00:00Z".into(),
+            workspace: temp.path().display().to_string(),
+            path: "src/lib.rs".into(),
+            kind: RepoChangeKind::Modified,
+            hunk_index: 0,
+            old_start: 10,
+            old_lines: 2,
+            new_start: 10,
+            new_lines: 3,
+            trace_status: RepoTraceStatus::Traced,
+            matching_trace_count: 1,
+            change_trace_status: RepoTraceStatus::Traced,
+            modified_at: None,
+            matching_trace_refs: vec![RepoHunkTraceRef {
+                event_id: Some("evt-source-req-api".into()),
+                agent: Some("codex".into()),
+                session: Some("s1".into()),
+                line: Some(10),
+                line_end: Some(12),
+                rationale: Some("Implement the API advisor requirement.".into()),
+                related_event_ids: vec!["evt-user-api".into()],
+            }],
+        })
+        .expect("repo hunk history");
+
+    let snapshot = DashboardSnapshot::load(store.root(), 20).expect("snapshot");
+    let mut case_file: ControlCaseFile = build_control_case_file(temp.path(), &snapshot);
+    case_file.case_file_id = "case-unmapped-with-proof".into();
+    case_file.requirements = vec![requirement(
+        "req-api",
+        "API endpoint must call the dedicated advisor.",
+        AcceptanceCoverageStatus::Unmapped,
+    )];
+    case_file.verification.status = VerificationStatus::Passed;
+    case_file.verification.latest_passing_command = Some("cargo test req-api".into());
+    case_file.completion_certificate.verification_status = VerificationStatus::Passed;
+    store.append_case_file(&case_file).expect("case file");
+
+    let packet = ControlPacket {
+        packet_id: "packet-requirement-proof".into(),
+        target_agent: "codex".into(),
+        urgency: PacketUrgency::Verification,
+        title: "Verify requirement implementation".into(),
+        summary: "Run the verifier for the API requirement.".into(),
+        instructions: Vec::new(),
+        evidence_refs: vec!["evt-source-req-api".into()],
+        forbidden: Vec::new(),
+        success_criteria: Vec::new(),
+        preconditions: PacketPreconditions::default(),
+    };
+    store
+        .append_advice(&AdviceRun {
+            advice_id: "advice-requirement-proof".into(),
+            case_file_id: "case-unmapped-with-proof".into(),
+            advisor_used: false,
+            advisor_error: None,
+            advisor_decision: None,
+            validation_outcome: ValidationOutcome::Approved(ControlAction::ForceVerification {
+                suite: coding_agent_monitor::VerificationSuite::Targeted,
+                blocking: true,
+            }),
+            final_action: ControlAction::ForceVerification {
+                suite: coding_agent_monitor::VerificationSuite::Targeted,
+                blocking: true,
+            },
+            control_rationale: ControlRationale {
+                selected_action: ControlActionKind::ForceVerification,
+                dominant_entropy: None,
+                reason: "Requirement needs fresh verification.".into(),
+                expected_entropy_delta: Vec::new(),
+                evidence_ids: vec!["evt-source-req-api".into()],
+                requirement_ids: Vec::new(),
+            },
+            packet: packet.clone(),
+            dispatch_result: DispatchResult {
+                dispatch_id: "dispatch-requirement-proof".into(),
+                packet_id: packet.packet_id.clone(),
+                target_agent: packet.target_agent.clone(),
+                status: DispatchStatus::OutboxWritten,
+                path: Some(".agent-monitor/outbox/codex/latest.md".into()),
+                reason: None,
+            },
+            packet_path: Some(".agent-monitor/outbox/codex/latest.md".into()),
+        })
+        .expect("advice");
+    store
+        .append_action_outcome(&ActionOutcome {
+            outcome_id: "outcome-requirement-proof".into(),
+            advice_id: "advice-requirement-proof".into(),
+            action: ControlActionKind::ForceVerification,
+            status: OutcomeStatus::Succeeded,
+            expected_entropy_delta: Vec::new(),
+            observed_entropy_delta: Vec::new(),
+            observed_entropy_delta_evidence: Vec::new(),
+            evidence_ids: vec!["evt-verify-req-api".into()],
+            requirement_ids: Vec::new(),
+            note: Some("Verifier passed.".into()),
+        })
+        .expect("outcome");
+
+    let report = load_completion_certificate_report(
+        temp.path(),
+        RequirementGraphQuery {
+            limit: 10,
+            ..RequirementGraphQuery::default()
+        },
+    )
+    .expect("completion certificate report");
+
+    assert_eq!(
+        report.certificate.status,
+        CompletionCertificateStatus::Eligible
+    );
+    assert_eq!(
+        report.certificate.closed_requirement_ids,
+        vec!["req-api".to_string()]
+    );
+    assert!(report.certificate.unresolved_requirement_ids.is_empty());
+    assert!(report.proof_gaps.is_empty(), "{report:?}");
+}
+
+#[test]
 fn requirements_query_returns_latest_requirement_nodes_with_filters() {
     let temp = tempfile::tempdir().expect("workspace");
     let mut store = ProjectStore::open(temp.path()).expect("store");
