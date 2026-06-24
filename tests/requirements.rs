@@ -200,6 +200,62 @@ fn completion_certificate_report_surfaces_verification_and_proof_gaps() {
 }
 
 #[test]
+fn completion_certificate_report_preserves_global_verification_when_requirements_unmapped() {
+    let temp = tempfile::tempdir().expect("workspace");
+    let mut store = ProjectStore::open(temp.path()).expect("store");
+    let snapshot = DashboardSnapshot::load(store.root(), 20).expect("snapshot");
+    let mut case_file: ControlCaseFile = build_control_case_file(temp.path(), &snapshot);
+    case_file.case_file_id = "case-global-verification-passed".into();
+    case_file.requirements = vec![requirement(
+        "req-api",
+        "API endpoint must call the dedicated advisor.",
+        AcceptanceCoverageStatus::Unmapped,
+    )];
+    case_file.verification.status = VerificationStatus::Passed;
+    case_file.verification.latest_passing_command = Some("cargo test --quiet".into());
+    case_file.completion_certificate.verification_status = VerificationStatus::Passed;
+    case_file.completion_certificate.unresolved_incidents.push(
+        coding_agent_monitor::CompletionIncident {
+            kind: "verification".into(),
+            summary: "old stale verification incident".into(),
+            evidence_ids: vec!["evt-old".into()],
+            missing_evidence: vec!["old missing verifier".into()],
+        },
+    );
+    store.append_case_file(&case_file).expect("case file");
+
+    let report = load_completion_certificate_report(
+        temp.path(),
+        RequirementGraphQuery {
+            limit: 10,
+            ..RequirementGraphQuery::default()
+        },
+    )
+    .expect("completion certificate report");
+
+    assert_eq!(
+        report.certificate.verification_status,
+        VerificationStatus::Passed
+    );
+    assert!(
+        !report
+            .certificate
+            .unresolved_incidents
+            .iter()
+            .any(|incident| incident.kind == "verification"),
+        "{report:?}"
+    );
+    assert!(
+        report
+            .certificate
+            .unresolved_incidents
+            .iter()
+            .any(|incident| incident.kind == "requirement_closure"),
+        "{report:?}"
+    );
+}
+
+#[test]
 fn requirements_query_returns_latest_requirement_nodes_with_filters() {
     let temp = tempfile::tempdir().expect("workspace");
     let mut store = ProjectStore::open(temp.path()).expect("store");

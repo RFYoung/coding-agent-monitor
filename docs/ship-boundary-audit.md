@@ -31,7 +31,7 @@ outcomes, and make changes traceable enough to explain why they exist.
 | Runtime validation probes cannot fake success | Proven | `run_probe` now returns `Unknown` unless a verifier has `acceptance_patterns = ["runtime_validation:<surface>"]`; runtime probe tests | Add richer platform runners later through the verifier registry. |
 | Worktree/write safety is enforced | Proven | lock acquire/release, wrapped-agent lock, stale-lock, handoff lock tests | Multi-worktree merge queue is still future work. |
 | Repo blame and requirement proof surfaces exist | Proven as first slice | `repo_hunks`, `trace`, `requirements`, `completion-certificate` commands and tests; project-contract requirements now derive from `AGENTS.md`/`CLAUDE.md`; `agent-monitor trace` can bind rationale to exact requirement ids; stale-verification `force_verification` decisions bind to the matching contract requirement and verifier outcomes inherit that id; `config verifier` registers verifier ids without hand-editing JSON | Requirement closure still needs mapped proof evidence for the remaining project-contract requirements. |
-| Completion certificate refuses weak proof | Proven after fix | empty-scope completion certificate test; current self-certificate reports 9 scoped project-contract requirements and `blocked` without a `requirement_scope` incident | Map requirements to trace/control/outcome/verifier evidence before claiming this project itself is complete. |
+| Completion certificate refuses weak proof | Proven after fix | empty-scope completion certificate test; report-level verification freshness stays separate from requirement closure; current self-certificate reports 9 scoped project-contract requirements and `blocked` without a `requirement_scope` incident | Map requirements to trace/control/outcome/verifier evidence before claiming this project itself is complete. |
 | Native dashboard surfaces bounded operational state | Proven as first slice | `agent-monitor-ui`, dashboard tests for events, advisor status, locks, probes, requirements, decision trails | Visual QA of the native app should be repeated before packaging. |
 | Dev-history packaging and analysis exists | Proven as first slice | `dev_history` module/tests and docs examples | Broader mining heuristics can improve after more real packages. |
 | Calibration records expected vs observed outcomes | Proven as first slice | `calibration` module/tests | Needs real long-run outcome data to become predictive. |
@@ -79,6 +79,7 @@ cargo test --quiet requirement_id_trace_links_matching_repo_hunk_as_necessary_pr
 cargo test --quiet force_verification_links_project_contract_requirement_to_control_and_outcome_proof
 cargo test --quiet config_verifier_command
 cargo test --quiet verifier_config_writer_tolerates_existing_invalid_advisor_profile
+cargo test --quiet completion_certificate_report_preserves_global_verification_when_requirements_unmapped
 ```
 
 The self `completion-certificate --workspace=.` check now reports 9 scoped

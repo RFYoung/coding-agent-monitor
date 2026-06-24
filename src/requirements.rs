@@ -419,6 +419,9 @@ fn completion_certificate_from_requirement_report(
         });
     }
 
+    let verification_status =
+        completion_report_verification_status(&graph.requirements, latest_case_file);
+
     if let Some(case_file) = latest_case_file {
         unresolved_incidents.extend(
             case_file
@@ -428,8 +431,9 @@ fn completion_certificate_from_requirement_report(
                 .filter(|incident| {
                     matches!(
                         incident.kind.as_str(),
-                        "subagent_lifecycle" | "test_oracle_authority" | "verification"
-                    )
+                        "subagent_lifecycle" | "test_oracle_authority"
+                    ) || (incident.kind == "verification"
+                        && verification_status != VerificationStatus::Passed)
                 })
                 .cloned(),
         );
@@ -446,7 +450,7 @@ fn completion_certificate_from_requirement_report(
         scoped_requirement_ids,
         closed_requirement_ids,
         unresolved_requirement_ids,
-        verification_status: completion_report_verification_status(&graph.requirements),
+        verification_status,
         verifier_commands: completion_report_verifier_commands(&graph.requirements),
         current_repo_anchor: latest_case_file
             .map(|case_file| CompletionRepoAnchor {
@@ -470,7 +474,15 @@ fn completion_certificate_from_requirement_report(
     }
 }
 
-fn completion_report_verification_status(requirements: &[RequirementNode]) -> VerificationStatus {
+fn completion_report_verification_status(
+    requirements: &[RequirementNode],
+    latest_case_file: Option<&ControlCaseFile>,
+) -> VerificationStatus {
+    if latest_case_file
+        .is_some_and(|case_file| case_file.verification.status == VerificationStatus::Passed)
+    {
+        return VerificationStatus::Passed;
+    }
     if requirements.is_empty() {
         return VerificationStatus::NotRun;
     }
