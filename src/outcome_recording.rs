@@ -9,13 +9,19 @@ pub(crate) fn record_verifier_outcome_for_latest_advice(
     let Some(advice) = advice_records.into_iter().next_back() else {
         return Ok(());
     };
-    if advice.final_action.kind() != ControlActionKind::ForceVerification {
-        return Ok(());
-    }
     if !latest_dispatch_matches_advice_packet(store, &advice)? {
         return Ok(());
     }
-    if !force_verification_advice_matches_verifier(&advice, run) {
+    let force_verification_match = advice.final_action.kind()
+        == ControlActionKind::ForceVerification
+        && force_verification_advice_matches_verifier(&advice, run);
+    if advice.final_action.kind() == ControlActionKind::ForceVerification
+        && !force_verification_match
+    {
+        return Ok(());
+    }
+    let derived_requirement_ids = verifier_requirement_ids_for_advice_case(store, &advice, run)?;
+    if !force_verification_match && derived_requirement_ids.is_empty() {
         return Ok(());
     }
 
@@ -34,12 +40,19 @@ pub(crate) fn record_verifier_outcome_for_latest_advice(
         VerificationRunStatus::Passed => OutcomeStatus::Succeeded,
         VerificationRunStatus::Failed | VerificationRunStatus::TimedOut => OutcomeStatus::Failed,
     };
+    let action = if force_verification_match {
+        ControlActionKind::ForceVerification
+    } else {
+        advice.final_action.kind()
+    };
+    let default_delta = if force_verification_match { -55 } else { -20 };
     let expected_entropy_delta =
-        expected_entropy_delta_for_outcome(&advice, EntropyKind::Verification, -55);
+        expected_entropy_delta_for_outcome(&advice, EntropyKind::Verification, default_delta);
     let note = format!(
-        "Verifier {} finished with {:?} after force_verification advice {}.",
+        "Verifier {} finished with {:?} after {:?} advice {}.",
         run.verifier_id.as_deref().unwrap_or("<unknown>"),
         run.status,
+        action,
         advice.advice_id
     );
     let observed_entropy_delta = observed_entropy_deltas_for_outcome(
@@ -50,10 +63,14 @@ pub(crate) fn record_verifier_outcome_for_latest_advice(
     );
     let evidence_ids = vec![run.verifier_run_id.clone()];
     let cause_evidence_ids = outcome_cause_evidence_ids(&advice);
+    let mut requirement_ids = advice.control_rationale.requirement_ids.clone();
+    for requirement_id in derived_requirement_ids {
+        push_unique_requirement_id(&mut requirement_ids, &requirement_id);
+    }
     store.append_action_outcome(&ActionOutcome {
         outcome_id: format!("outcome-{}", current_id_fragment()),
         advice_id: advice.advice_id.clone(),
-        action: ControlActionKind::ForceVerification,
+        action,
         status,
         observed_entropy_delta_evidence: entropy_delta_evidence_refs(
             &observed_entropy_delta,
@@ -63,9 +80,48 @@ pub(crate) fn record_verifier_outcome_for_latest_advice(
         observed_entropy_delta,
         expected_entropy_delta,
         evidence_ids,
-        requirement_ids: advice.control_rationale.requirement_ids.clone(),
+        requirement_ids,
         note: Some(note),
     })
+}
+
+fn verifier_requirement_ids_for_advice_case(
+    store: &ProjectStore,
+    advice: &AdviceRun,
+    run: &VerifierRun,
+) -> Result<Vec<String>, StoreError> {
+    let case_files = read_all_jsonl::<ControlCaseFile>(&store.root.join("case-files.jsonl"))?;
+    let Some(case_file) = case_files
+        .into_iter()
+        .find(|case_file| case_file.case_file_id == advice.case_file_id)
+    else {
+        return Ok(Vec::new());
+    };
+    let verifier_id = run.verifier_id.as_deref();
+    let command = run.command.trim();
+    let mut requirement_ids = Vec::new();
+    for requirement in case_file.requirements {
+        let id_matches = verifier_id.is_some_and(|id| {
+            requirement
+                .verifier_ids
+                .iter()
+                .any(|verifier_id| verifier_id == id)
+        });
+        let command_matches = requirement
+            .verifier_commands
+            .iter()
+            .any(|verifier_command| verifier_command.trim() == command);
+        if id_matches || command_matches {
+            push_unique_requirement_id(&mut requirement_ids, &requirement.requirement_id);
+        }
+    }
+    Ok(requirement_ids)
+}
+
+fn push_unique_requirement_id(values: &mut Vec<String>, value: &str) {
+    if !values.iter().any(|existing| existing == value) {
+        values.push(value.to_string());
+    }
 }
 
 pub(super) fn record_immediate_outcome_for_advice(

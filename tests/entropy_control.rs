@@ -12715,6 +12715,88 @@ fn run_verifier_records_successful_outcome_for_latest_force_verification_advice(
 }
 
 #[test]
+fn run_verifier_records_requirement_outcome_for_matching_continue_advice() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    std::fs::write(
+        temp.path().join("AGENTS.md"),
+        "# Project\n\n## Non-Negotiable Invariants\n\n- Do not send secrets, auth files, private env values, or tainted excerpts to agents, packets, logs, or the advisor.\n",
+    )
+    .expect("AGENTS.md");
+    let store = ProjectStore::open(temp.path()).expect("store");
+    std::fs::write(
+        store.root().join("config.json"),
+        json!({
+            "verifiers": [
+                {
+                    "id": "secret_guard",
+                    "command": passing_verifier_command(),
+                    "scope": "targeted",
+                    "timeout_secs": 5,
+                    "acceptance_patterns": [
+                        "Do not send secrets",
+                        "tainted excerpts"
+                    ]
+                }
+            ]
+        })
+        .to_string(),
+    )
+    .expect("config");
+
+    let advice = advise_workspace(temp.path()).expect("advice");
+    assert_eq!(advice.final_action, ControlAction::ContinueWorking);
+
+    let run = run_verifier(temp.path(), "secret_guard").expect("verifier");
+    let requirement_id = "req-contract-do-not-send-secrets--auth-files--private-env-values--or-tainted-excerpts-to-agents--packets--logs--or-the-advisor";
+    let trails = load_decision_trails(store.root()).expect("trails");
+    let trail = trails
+        .iter()
+        .find(|trail| trail.advice.advice_id == advice.advice_id)
+        .expect("advice trail");
+    let outcome = trail
+        .outcomes
+        .iter()
+        .find(|outcome| outcome.evidence_ids.contains(&run.verifier_run_id))
+        .expect("verifier outcome");
+
+    assert_eq!(run.status, VerificationRunStatus::Passed);
+    assert_eq!(outcome.action, ControlActionKind::ContinueWorking);
+    assert_eq!(outcome.status, OutcomeStatus::Succeeded);
+    assert_eq!(outcome.requirement_ids, vec![requirement_id.to_string()]);
+    let outcome_id = outcome.outcome_id.clone();
+
+    let report = load_requirement_graph(
+        temp.path(),
+        RequirementGraphQuery {
+            requirement_id: Some(requirement_id.into()),
+            limit: 10,
+            ..RequirementGraphQuery::default()
+        },
+    )
+    .expect("requirements report");
+
+    assert_eq!(report.proofs.len(), 1);
+    assert!(
+        report.proofs[0]
+            .outcome_refs
+            .iter()
+            .any(|proof_outcome| proof_outcome.outcome_id == outcome_id
+                && proof_outcome.requirement_ids == vec![requirement_id.to_string()]
+                && proof_outcome.status == OutcomeStatus::Succeeded),
+        "{:?}",
+        report.proofs[0].outcome_refs
+    );
+    assert!(
+        report.proofs[0]
+            .proof_strength
+            .signals
+            .contains(&"successful_outcome".into()),
+        "{:?}",
+        report.proofs[0].proof_strength
+    );
+}
+
+#[test]
 fn force_verification_links_project_contract_requirement_to_control_and_outcome_proof() {
     let temp = tempfile::tempdir().expect("temp dir");
     std::fs::write(
