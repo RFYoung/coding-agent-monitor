@@ -1,0 +1,1771 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Coding-agent history: deep empirical failure analysis</title>
+  <style>
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+    /* CSS for syntax highlighting */
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { display: inline-block; text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { color: #008000; } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { color: #008000; font-weight: bold; } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+  <link rel="stylesheet" href="report.css" />
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">Coding-agent history: deep empirical failure
+analysis</h1>
+</header>
+<nav id="TOC" role="doc-toc">
+<ul>
+<li><a href="#coding-agent-history-deep-empirical-failure-analysis"
+id="toc-coding-agent-history-deep-empirical-failure-analysis">Coding-agent
+history: deep empirical failure analysis</a>
+<ul>
+<li><a href="#executive-diagnosis"
+id="toc-executive-diagnosis">Executive diagnosis</a></li>
+<li><a href="#dataset-and-method" id="toc-dataset-and-method">1. Dataset
+and method</a>
+<ul>
+<li><a href="#methodological-limits"
+id="toc-methodological-limits">Methodological limits</a></li>
+</ul></li>
+<li><a href="#primary-empirical-findings"
+id="toc-primary-empirical-findings">2. Primary empirical findings</a>
+<ul>
+<li><a href="#closure-claims-outrun-requirement-closure"
+id="toc-closure-claims-outrun-requirement-closure">2.1 Closure claims
+outrun requirement closure</a></li>
+<li><a href="#requirements-are-not-maintained-as-an-authoritative-graph"
+id="toc-requirements-are-not-maintained-as-an-authoritative-graph">2.2
+Requirements are not maintained as an authoritative graph</a></li>
+<li><a href="#verification-and-validation-are-conflated"
+id="toc-verification-and-validation-are-conflated">2.3 Verification and
+validation are conflated</a></li>
+<li><a href="#coordination-degrades-sharply-with-fan-out"
+id="toc-coordination-degrades-sharply-with-fan-out">2.4 Coordination
+degrades sharply with fan-out</a></li>
+<li><a href="#context-continuity-is-a-material-reliability-problem"
+id="toc-context-continuity-is-a-material-reliability-problem">2.5
+Context continuity is a material reliability problem</a></li>
+<li><a href="#tool-activity-is-not-a-reliable-progress-measure"
+id="toc-tool-activity-is-not-a-reliable-progress-measure">2.6 Tool
+activity is not a reliable progress measure</a></li>
+<li><a href="#repository-history-reveals-unstable-domain-boundaries"
+id="toc-repository-history-reveals-unstable-domain-boundaries">2.7
+Repository history reveals unstable domain boundaries</a></li>
+<li><a href="#test-success-can-be-manufactured-by-changing-the-oracle"
+id="toc-test-success-can-be-manufactured-by-changing-the-oracle">2.8
+Test success can be manufactured by changing the oracle</a></li>
+<li><a href="#operational-failures-are-mixed-with-coding-failures"
+id="toc-operational-failures-are-mixed-with-coding-failures">2.9
+Operational failures are mixed with coding failures</a></li>
+<li><a href="#the-system-violates-the-users-decision-budget"
+id="toc-the-system-violates-the-users-decision-budget">2.10 The system
+violates the user’s decision budget</a></li>
+<li><a
+href="#scope-volatility-is-real-not-every-follow-up-is-agent-failure"
+id="toc-scope-volatility-is-real-not-every-follow-up-is-agent-failure">2.11
+Scope volatility is real; not every follow-up is agent failure</a></li>
+</ul></li>
+<li><a href="#probability-model-from-scalar-entropy-to-belief-state"
+id="toc-probability-model-from-scalar-entropy-to-belief-state">3.
+Probability model: from scalar entropy to belief state</a>
+<ul>
+<li><a href="#model-concrete-hypotheses"
+id="toc-model-concrete-hypotheses">3.1 Model concrete
+hypotheses</a></li>
+<li><a href="#use-bayesian-updates-and-hierarchical-outcome-models"
+id="toc-use-bayesian-updates-and-hierarchical-outcome-models">3.2 Use
+Bayesian updates and hierarchical outcome models</a></li>
+<li><a href="#calibrate-advisor-probabilities"
+id="toc-calibrate-advisor-probabilities">3.3 Calibrate advisor
+probabilities</a></li>
+<li><a href="#use-sequential-testing-for-retrystop-decisions"
+id="toc-use-sequential-testing-for-retrystop-decisions">3.4 Use
+sequential testing for retry/stop decisions</a></li>
+<li><a href="#detect-regime-changes-not-only-thresholds"
+id="toc-detect-regime-changes-not-only-thresholds">3.5 Detect regime
+changes, not only thresholds</a></li>
+<li><a href="#treat-the-supervisor-as-a-pomdp-approximation"
+id="toc-treat-the-supervisor-as-a-pomdp-approximation">3.6 Treat the
+supervisor as a POMDP approximation</a></li>
+</ul></li>
+<li><a href="#pareto-analysis-and-multiobjective-control"
+id="toc-pareto-analysis-and-multiobjective-control">4. Pareto analysis
+and multiobjective control</a>
+<ul>
+<li><a
+href="#pareto-principle-the-edit-distribution-is-concentrated-but-not-8020"
+id="toc-pareto-principle-the-edit-distribution-is-concentrated-but-not-8020">4.1
+Pareto principle: the edit distribution is concentrated, but not
+80/20</a></li>
+<li><a
+href="#pareto-optimality-do-not-collapse-decisions-into-one-score-too-early"
+id="toc-pareto-optimality-do-not-collapse-decisions-into-one-score-too-early">4.2
+Pareto optimality: do not collapse decisions into one score too
+early</a></li>
+<li><a href="#example" id="toc-example">4.3 Example</a></li>
+</ul></li>
+<li><a href="#software-engineering-interpretations"
+id="toc-software-engineering-interpretations">5. Software-engineering
+interpretations</a>
+<ul>
+<li><a href="#requirements-engineering-build-a-live-traceability-graph"
+id="toc-requirements-engineering-build-a-live-traceability-graph">5.1
+Requirements engineering: build a live traceability graph</a></li>
+<li><a href="#architecture-measure-change-amplification"
+id="toc-architecture-measure-change-amplification">5.2 Architecture:
+measure change amplification</a></li>
+<li><a href="#verification-and-validation-matrix"
+id="toc-verification-and-validation-matrix">5.3 Verification and
+validation matrix</a></li>
+<li><a href="#test-engineering-protect-the-oracle"
+id="toc-test-engineering-protect-the-oracle">5.4 Test engineering:
+protect the oracle</a></li>
+<li><a href="#process-mining-conformance-not-vanity-metrics"
+id="toc-process-mining-conformance-not-vanity-metrics">5.5 Process
+mining: conformance, not vanity metrics</a></li>
+<li><a href="#safety-engineering-model-unsafe-control-actions"
+id="toc-safety-engineering-model-unsafe-control-actions">5.6 Safety
+engineering: model unsafe control actions</a></li>
+<li><a href="#distributed-systems-causality-leases-and-idempotency"
+id="toc-distributed-systems-causality-leases-and-idempotency">5.7
+Distributed systems: causality, leases, and idempotency</a></li>
+</ul></li>
+<li><a href="#concrete-control-architecture"
+id="toc-concrete-control-architecture">6. Concrete control
+architecture</a>
+<ul>
+<li><a href="#evidence-ledger" id="toc-evidence-ledger">6.1 Evidence
+ledger</a></li>
+<li><a href="#completion-certificate"
+id="toc-completion-certificate">6.2 Completion certificate</a></li>
+<li><a href="#belief-state-and-probes"
+id="toc-belief-state-and-probes">6.3 Belief state and probes</a></li>
+<li><a href="#subagent-lifecycle" id="toc-subagent-lifecycle">6.4
+Subagent lifecycle</a></li>
+<li><a href="#action-selection" id="toc-action-selection">6.5 Action
+selection</a></li>
+</ul></li>
+<li><a href="#hard-policies-justified-by-this-history"
+id="toc-hard-policies-justified-by-this-history">7. Hard policies
+justified by this history</a>
+<ul>
+<li><a href="#completion" id="toc-completion">Completion</a></li>
+<li><a href="#ui" id="toc-ui">UI</a></li>
+<li><a href="#tests" id="toc-tests">Tests</a></li>
+<li><a href="#subagents" id="toc-subagents">Subagents</a></li>
+<li><a href="#questions" id="toc-questions">Questions</a></li>
+<li><a href="#retry-and-switching" id="toc-retry-and-switching">Retry
+and switching</a></li>
+<li><a href="#architecture" id="toc-architecture">Architecture</a></li>
+</ul></li>
+<li><a href="#metrics-that-should-replace-entropy-score-dashboards"
+id="toc-metrics-that-should-replace-entropy-score-dashboards">8. Metrics
+that should replace “entropy score” dashboards</a></li>
+<li><a href="#recommended-implementation-slices"
+id="toc-recommended-implementation-slices">9. Recommended implementation
+slices</a>
+<ul>
+<li><a href="#slice-1-offline-history-compiler"
+id="toc-slice-1-offline-history-compiler">Slice 1: Offline history
+compiler</a></li>
+<li><a href="#slice-2-requirement-and-authority-ledger"
+id="toc-slice-2-requirement-and-authority-ledger">Slice 2: Requirement
+and authority ledger</a></li>
+<li><a href="#slice-3-repository-epochs-and-evidence-freshness"
+id="toc-slice-3-repository-epochs-and-evidence-freshness">Slice 3:
+Repository epochs and evidence freshness</a></li>
+<li><a href="#slice-4-agent-lifecycle-and-wip-controller"
+id="toc-slice-4-agent-lifecycle-and-wip-controller">Slice 4: Agent
+lifecycle and WIP controller</a></li>
+<li><a href="#slice-5-failure-taxonomy-and-sequential-retry"
+id="toc-slice-5-failure-taxonomy-and-sequential-retry">Slice 5: Failure
+taxonomy and sequential retry</a></li>
+<li><a href="#slice-6-process-conformance-and-probes"
+id="toc-slice-6-process-conformance-and-probes">Slice 6: Process
+conformance and probes</a></li>
+<li><a href="#slice-7-pareto-action-policy-and-bounded-llm-advisor"
+id="toc-slice-7-pareto-action-policy-and-bounded-llm-advisor">Slice 7:
+Pareto action policy and bounded LLM advisor</a></li>
+<li><a href="#slice-8-outcome-learning-and-replay"
+id="toc-slice-8-outcome-learning-and-replay">Slice 8: Outcome learning
+and replay</a></li>
+</ul></li>
+<li><a href="#highest-value-experiments"
+id="toc-highest-value-experiments">10. Highest-value
+experiments</a></li>
+<li><a href="#final-architectural-conclusion"
+id="toc-final-architectural-conclusion">11. Final architectural
+conclusion</a></li>
+<li><a href="#references" id="toc-references">References</a></li>
+</ul></li>
+</ul>
+</nav>
+<h1
+id="coding-agent-history-deep-empirical-failure-analysis">Coding-agent
+history: deep empirical failure analysis</h1>
+<p><strong>Project:</strong> <code>rag_sys</code><br />
+<strong>Study date:</strong> 2026-06-24<br />
+<strong>Scope:</strong> Complete supplied Codex and Claude Code history
+archive, including main sessions, tool calls, subagent traces, workflow
+journals, repository mutations, verification actions, and user
+follow-ups.</p>
+<h2 id="executive-diagnosis">Executive diagnosis</h2>
+<p>The dominant failure is not lack of coding skill. It is
+<strong>premature epistemic closure under uncontrolled work in
+progress</strong>.</p>
+<p>The agents repeatedly convert activity into confidence:</p>
+<pre class="text"><code>files inspected + code changed + build green + plausible explanation
+                         ↓
+                    “completed”</code></pre>
+<p>But the actual acceptance state often remains partially unknown:</p>
+<pre class="text"><code>unparsed requirement artifacts
++ stale or incomplete verification
++ unresolved subagents
++ resurrected rejected designs
++ untested runtime/visual behavior
++ ambiguous scope changes
+                         ↓
+                 corrective user turn</code></pre>
+<p>The monitor should therefore optimize <strong>verified requirement
+closure</strong>, not token throughput, tool volume, number of agents,
+number of tests mentioned, or a single synthetic “entropy score.”</p>
+<p>The most important design shift is:</p>
+<blockquote>
+<p>Represent uncertainty as a calibrated probability distribution over
+concrete failure hypotheses, and represent success as traceable closure
+of authoritative requirements.</p>
+</blockquote>
+<p>“Entropy” remains useful, but only as a property of a belief
+distribution. A count of error words, retries, or modified files is not
+entropy.</p>
+<h2 id="dataset-and-method">1. Dataset and method</h2>
+<p>The archive contains 468 history files: 432 Claude Code files and 36
+Codex files. The analysis reconstructed four Claude main sessions, 413
+Claude subagent traces, 70 Codex turns, 12,248 normalized top-level tool
+calls, and 4,684 file events. Claude supplied 77,843 parseable JSONL
+records plus one malformed record; Codex supplied 21,319 parseable
+records.</p>
+<p>The study used five analytical layers:</p>
+<ol type="1">
+<li><strong>Session reconstruction:</strong> parent turns, subagent
+topology, tool calls, interruptions, context compactions, and terminal
+states.</li>
+<li><strong>Process mining:</strong> phase transitions among inspection,
+editing, verification, coordination, health checks, and other shell
+activity.</li>
+<li><strong>Requirements/outcome proxies:</strong> the next user
+response after a completed turn, with conservative detectors for
+immediate corrections and broader detectors for negative or missing-work
+feedback.</li>
+<li><strong>Repository topology:</strong> canonicalized paths, edit
+concentration, architectural layer crossing, and co-change
+networks.</li>
+<li><strong>Decision analysis:</strong> Bayesian credible intervals,
+posterior comparisons, multiobjective dominance, queueing/WIP
+interpretation, and proposed causal models.</li>
+</ol>
+<h3 id="methodological-limits">Methodological limits</h3>
+<p>The transcript does not provide perfect ground truth. A follow-up may
+introduce new scope rather than prove failure. A “missing terminal
+result” subagent may still have produced useful partial work. Some
+browser tests or shell-side edits may be hidden from the normalized
+top-level event class. Multiple agents modified the same repository,
+weakening attribution. Token fields include cache traffic and are not
+reliable cost estimates. Consequently, all numerical rates below are
+<strong>observational proxies</strong>, not model leaderboards or causal
+treatment effects.</p>
+<p>That limitation is itself a design finding: a production monitor must
+create stronger outcome and attribution data than current agent runtimes
+provide.</p>
+<h2 id="primary-empirical-findings">2. Primary empirical findings</h2>
+<h3 id="closure-claims-outrun-requirement-closure">2.1 Closure claims
+outrun requirement closure</h3>
+<p>Among 138 completed Claude segments followed by another real user
+turn:</p>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 26%" />
+<col style="width: 26%" />
+<col style="width: 26%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Follow-up proxy</th>
+<th style="text-align: right;">Count</th>
+<th style="text-align: right;">Rate</th>
+<th style="text-align: right;">Jeffreys 95% interval</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Broad negative/corrective next prompt</td>
+<td style="text-align: right;">30</td>
+<td style="text-align: right;">21.7%</td>
+<td style="text-align: right;">15.5%–29.2%</td>
+</tr>
+<tr class="even">
+<td>Negative/corrective within 30 minutes</td>
+<td style="text-align: right;">18</td>
+<td style="text-align: right;">13.0%</td>
+<td style="text-align: right;">8.2%–19.4%</td>
+</tr>
+<tr class="odd">
+<td>Narrow, clear same-task correction within 30 minutes</td>
+<td style="text-align: right;">10</td>
+<td style="text-align: right;">7.2%</td>
+<td style="text-align: right;">3.8%–12.5%</td>
+</tr>
+</tbody>
+</table>
+<p>The narrow detector is a conservative lower bound. The broad detector
+is overinclusive: some user messages contain new requirements, injected
+skill text, or dissatisfaction not directly caused by the preceding
+turn.</p>
+<p>Broad completion language is nevertheless a useful warning signal.
+Clear immediate corrections occurred after 8 of 83 broad claims, versus
+2 of 55 non-broad claims. A simple Beta-Binomial comparison gives
+approximately a 91% posterior probability that the broad-claim
+correction rate is higher; the posterior median relative risk is about
+2.5, but its 95% interval is wide. This is suggestive, not
+conclusive.</p>
+<p>The transcript contains several high-confidence examples:</p>
+<ul>
+<li>An agent reported analysis artifacts as complete; the next user
+response was essentially “write the code.”</li>
+<li>An agent called a UI change complete after a successful build while
+explicitly declining browser validation; the next response said it did
+not work.</li>
+<li>An agent reported all verification complete and zero errors; the
+next response exposed a frontend compile/runtime error.</li>
+<li>Codex reported that all 20 Word test items and all screenshots had
+been handled; the next response identified hand-drawn numbered
+annotations and unresolved workflow semantics.</li>
+</ul>
+<p>This is best described as an <strong>evidence-to-claim
+gap</strong>.</p>
+<p>A monitor must treat a completion statement as a transaction that
+needs a certificate, not as natural-language opinion.</p>
+<h3 id="requirements-are-not-maintained-as-an-authoritative-graph">2.2
+Requirements are not maintained as an authoritative graph</h3>
+<p>The history contains durable constraints that recur across
+sessions:</p>
+<ul>
+<li>do not create a separate public-dataset concept;</li>
+<li>do not preserve compatibility paths merely for compatibility;</li>
+<li>do not put SQL inside Java;</li>
+<li>support Windows and Linux;</li>
+<li>use browser/Playwright validation for UI work;</li>
+<li>preserve reusable ingestion/workflow semantics;</li>
+<li>do not ask the user to choose routine implementation
+sequencing;</li>
+<li>read recent history and do not redo settled work;</li>
+<li>follow the project’s design system rather than inventing isolated UI
+patterns.</li>
+</ul>
+<p>These are not ordinary chat details. They are architectural
+invariants, rejected alternatives, validation obligations, and
+user-governance preferences. Yet they repeatedly disappear from working
+context.</p>
+<p>A particularly clear episode occurred when the agent derived a
+“public dataset directory” concept and a compatibility design even
+though neither had authority. The user rejected both. Later,
+compatibility language returned again. This is <strong>rejected-design
+resurrection</strong>.</p>
+<p>The test document exposed another failure. The agents could parse
+text and inspect screenshots, but they did not reliably map hand-drawn
+numeric annotations to the corresponding acceptance issues. This is not
+merely an OCR problem. It requires a multimodal requirement model:</p>
+<pre class="text"><code>paragraph / screenshot / drawn marker / callout / affected UI region
+                         ↓
+                  acceptance criterion
+                         ↓
+               implementation evidence
+                         ↓
+                 validation evidence</code></pre>
+<p>The correct durable object is a requirement graph, not a prose
+summary.</p>
+<h3 id="verification-and-validation-are-conflated">2.3 Verification and
+validation are conflated</h3>
+<p>For 122 completed Claude segments that edited code and had a later
+user turn:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Evidence state</th>
+<th style="text-align: right;">Count</th>
+<th style="text-align: right;">Share</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Recognized verification after the last explicit edit</td>
+<td style="text-align: right;">59</td>
+<td style="text-align: right;">48.4%</td>
+</tr>
+<tr class="even">
+<td>Marked stale or missing by the parser</td>
+<td style="text-align: right;">43</td>
+<td style="text-align: right;">35.2%</td>
+</tr>
+<tr class="odd">
+<td>Claimed verification without recognized fresh evidence</td>
+<td style="text-align: right;">49</td>
+<td style="text-align: right;">40.2%</td>
+</tr>
+<tr class="even">
+<td>Claimed completion without recognized fresh evidence</td>
+<td style="text-align: right;">30</td>
+<td style="text-align: right;">24.6%</td>
+</tr>
+<tr class="odd">
+<td>Broad claim without recognized fresh evidence</td>
+<td style="text-align: right;">36</td>
+<td style="text-align: right;">29.5%</td>
+</tr>
+</tbody>
+</table>
+<p>The remaining cases are ambiguous because some writes or verification
+may occur in shell commands or subagents.</p>
+<p>Verification modality is also skewed:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Modality among 122 edited turns</th>
+<th style="text-align: right;">Count</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Any recognized test action</td>
+<td style="text-align: right;">47</td>
+</tr>
+<tr class="even">
+<td>Any build action</td>
+<td style="text-align: right;">94</td>
+</tr>
+<tr class="odd">
+<td>Any browser action</td>
+<td style="text-align: right;">11</td>
+</tr>
+<tr class="even">
+<td>Build only, no test or browser</td>
+<td style="text-align: right;">47</td>
+</tr>
+<tr class="odd">
+<td>No recognized test, build, or browser</td>
+<td style="text-align: right;">21</td>
+</tr>
+</tbody>
+</table>
+<p>This explains several failures. A build verifies compilation or
+packaging; it does not validate that a user workflow behaves correctly,
+that a route loads, that a visual hierarchy matches the requirement, or
+that a video preview is visible. NASA’s systems-engineering distinction
+is directly applicable: verification asks whether the product conforms
+to specified requirements; validation asks whether it fulfills intended
+use in the intended environment.[1]</p>
+<p>A counterintuitive statistical result reinforces the need for causal
+discipline: in the raw data, turns with recognized fresh verification
+received more negative follow-ups than turns without it. That does not
+imply testing is harmful. Difficult tasks are more likely to trigger
+both extensive verification and later complaints. This is classic
+confounding by task difficulty and scope. A monitor that rewards raw
+test counts would optimize the wrong proxy.</p>
+<p>The correct object is a <strong>verification certificate</strong>
+tied to:</p>
+<ul>
+<li>repository tree/commit and mutation epoch;</li>
+<li>requirement or risk being checked;</li>
+<li>affected paths and services;</li>
+<li>verifier type and environment;</li>
+<li>pass/fail/partial result;</li>
+<li>test-oracle authority;</li>
+<li>freshness relative to subsequent edits.</li>
+</ul>
+<h3 id="coordination-degrades-sharply-with-fan-out">2.4 Coordination
+degrades sharply with fan-out</h3>
+<p>The archive contains 413 Claude subagent files. Direct subagents had
+no terminal structured result in 22 of 103 cases, or 21.4% (Jeffreys 95%
+interval 14.3%–30.0%). Workflow subagents had no terminal structured
+result in 128 of 310 cases, or 41.3% (35.9%–46.8%). A posterior
+comparison gives greater than 99.99% probability that the workflow
+missing-result rate is higher; the median difference is about 19.8
+percentage points.</p>
+<p>Across 15 workflow groups, fan-out and recorded result rate have
+Spearman correlation <code>ρ = -0.644</code>, <code>p = 0.0095</code>.
+Aggregating the observed groups:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Workflow fan-out</th>
+<th style="text-align: right;">Terminal results</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>At most 10 agents</td>
+<td style="text-align: right;">35 / 37 = 94.6%</td>
+</tr>
+<tr class="even">
+<td>More than 10 agents</td>
+<td style="text-align: right;">142 / 273 = 52.0%</td>
+</tr>
+</tbody>
+</table>
+<p>This split is observational and workflows differ in difficulty, but
+the operational pattern is strong. Examples range from a 12-agent
+workflow with no recorded results to a 71-agent workflow with only 23
+recorded results.</p>
+<p>Codex shows a related lifecycle gap: 69 spawn operations, 29 close
+operations, and only four waits. Missing explicit closure does not prove
+abandonment, but it means the supervisor cannot establish whether work
+was integrated, cancelled, timed out, superseded, or still active.</p>
+<p>This is queueing and distributed-systems behavior. At roughly fixed
+integration throughput, increasing active work raises cycle time and
+unfinished inventory; Little’s Law formalizes the relationship between
+work in system, throughput, and time in system under stable
+assumptions.[2] The practical conclusion is not “never parallelize.” It
+is:</p>
+<blockquote>
+<p>Parallelism is valuable only while decomposition quality, ownership
+isolation, and integration capacity keep pace.</p>
+</blockquote>
+<p>The monitor needs WIP limits, ownership leases, join barriers, and
+adaptive fan-out—not a fixed “spawn many agents” policy.</p>
+<h3 id="context-continuity-is-a-material-reliability-problem">2.5
+Context continuity is a material reliability problem</h3>
+<p>The raw histories contain:</p>
+<ul>
+<li>17 Claude context compactions;</li>
+<li>28 Codex context compactions;</li>
+<li>40 Claude user-interruption markers;</li>
+<li>16 interrupted Codex turns out of 70, or 22.9% (Jeffreys 95%
+interval 14.2%–33.7%).</li>
+</ul>
+<p>The user repeatedly asks agents to read recent history, continue
+unfinished work, and avoid redoing previous analysis. These requests are
+evidence that context compaction and session changes lose more than
+token-level detail. They lose:</p>
+<ul>
+<li>which requirements were authoritative;</li>
+<li>which alternatives were rejected;</li>
+<li>which files and services remain causally relevant;</li>
+<li>which verification evidence became stale;</li>
+<li>which subagent results were integrated;</li>
+<li>what “done” was supposed to mean.</li>
+</ul>
+<p>A summary that preserves only narrative is insufficient. Before
+compaction, the runtime should persist a typed continuation state.</p>
+<h3 id="tool-activity-is-not-a-reliable-progress-measure">2.6 Tool
+activity is not a reliable progress measure</h3>
+<p>Claude generated 6,559 normalized top-level tool calls with a 3.6%
+observed failure rate; Codex generated 5,689 with a 6.7% observed
+failure rate. Codex used far more inspection and generic shell activity
+relative to edits. Claude used more direct editing, mutation,
+coordination, and delegation.</p>
+<p>Process mining shows long same-phase runs:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Transition/shape</th>
+<th style="text-align: right;">Claude</th>
+<th style="text-align: right;">Codex</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Inspect → inspect</td>
+<td style="text-align: right;">53.0%</td>
+<td style="text-align: right;">78.8%</td>
+</tr>
+<tr class="even">
+<td>Edit → edit</td>
+<td style="text-align: right;">55.7%</td>
+<td style="text-align: right;">48.1%</td>
+</tr>
+<tr class="odd">
+<td>Verify → edit</td>
+<td style="text-align: right;">22.7%</td>
+<td style="text-align: right;">13.5%</td>
+</tr>
+<tr class="even">
+<td>Median collapsed phase count</td>
+<td style="text-align: right;">15.0</td>
+<td style="text-align: right;">30.5</td>
+</tr>
+<tr class="odd">
+<td>Median same-phase repeat share</td>
+<td style="text-align: right;">43.5%</td>
+<td style="text-align: right;">62.1%</td>
+</tr>
+</tbody>
+</table>
+<p>These are not automatically defects. An audit legitimately inspects
+without editing, and a refactor may need many edits. The important
+result is that tool volume, duration, files changed, and verification
+count were not stable predictors of the next user response. In several
+coarse splits, larger turns even had fewer negative follow-ups,
+presumably because task type and difficulty dominate.</p>
+<p>Therefore the monitor must not use “busy” metrics as reward. It
+should detect <strong>state progress</strong>:</p>
+<pre class="text"><code>requirements closed
+belief uncertainty reduced
+failure cause isolated
+verification coverage increased
+architecture debt reduced
+user decisions avoided safely</code></pre>
+<p>Process mining is still valuable. The IEEE Process Mining Manifesto
+explicitly treats event data as first-class and uses logs to discover,
+check, and improve operational processes.[3] Here it should be used for
+conformance and loop detection, not to infer quality from activity
+volume alone.</p>
+<h3 id="repository-history-reveals-unstable-domain-boundaries">2.7
+Repository history reveals unstable domain boundaries</h3>
+<p>After canonicalizing worktree, absolute, and case variants, the
+analysis found approximately 3,153 explicit edit events across 802
+repository paths. Edit concentration is substantial:</p>
+<ul>
+<li>Gini coefficient: approximately 0.651;</li>
+<li>top 1% of paths: 22.8% of edits;</li>
+<li>top 10%: 60.9%;</li>
+<li>top 20%: 73.4%;</li>
+<li>243 paths, or 30.3%, are needed to account for 80% of edits.</li>
+</ul>
+<p>This is <strong>not</strong> a clean 80/20 distribution. There are
+strong hotspots, but the churn is also architecturally broad.</p>
+<p>The largest hotspots include:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Path</th>
+<th style="text-align: right;">Edit events</th>
+<th style="text-align: right;">Distinct segments</th>
+<th style="text-align: right;">Active days</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>knowledgeBase/index.vue</code></td>
+<td style="text-align: right;">169</td>
+<td style="text-align: right;">37</td>
+<td style="text-align: right;">7</td>
+</tr>
+<tr class="even">
+<td><code>KnowledgeBaseService.java</code></td>
+<td style="text-align: right;">99</td>
+<td style="text-align: right;">24</td>
+<td style="text-align: right;">9</td>
+</tr>
+<tr class="odd">
+<td><code>SearchView.vue</code></td>
+<td style="text-align: right;">83</td>
+<td style="text-align: right;">21</td>
+<td style="text-align: right;">7</td>
+</tr>
+<tr class="even">
+<td><code>document/index.vue</code></td>
+<td style="text-align: right;">71</td>
+<td style="text-align: right;">24</td>
+<td style="text-align: right;">7</td>
+</tr>
+<tr class="odd">
+<td><code>market/dataset/index.vue</code></td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">21</td>
+<td style="text-align: right;">8</td>
+</tr>
+<tr class="even">
+<td><code>portal/index.vue</code></td>
+<td style="text-align: right;">79</td>
+<td style="text-align: right;">18</td>
+<td style="text-align: right;">4</td>
+</tr>
+<tr class="odd">
+<td><code>knowledgeBase/detail.vue</code></td>
+<td style="text-align: right;">59</td>
+<td style="text-align: right;">13</td>
+<td style="text-align: right;">4</td>
+</tr>
+<tr class="even">
+<td><code>DocumentController.java</code></td>
+<td style="text-align: right;">44</td>
+<td style="text-align: right;">12</td>
+<td style="text-align: right;">6</td>
+</tr>
+<tr class="odd">
+<td><code>IngestCore.java</code></td>
+<td style="text-align: right;">38</td>
+<td style="text-align: right;">12</td>
+<td style="text-align: right;">4</td>
+</tr>
+<tr class="even">
+<td><code>pipeline/index.vue</code></td>
+<td style="text-align: right;">40</td>
+<td style="text-align: right;">9</td>
+<td style="text-align: right;">3</td>
+</tr>
+</tbody>
+</table>
+<p>Of 261 segments with explicit edit events, 113 (43.3%) crossed
+architectural layers and 58 (22.2%) co-edited frontend and backend. Only
+nine segments (3.45%) explicitly co-edited test paths; this is a
+co-evolution metric, not a test-execution metric.</p>
+<p>The hotspots align with the recurrent conceptual disputes in the
+chat:</p>
+<ul>
+<li>knowledge body vs knowledge base vs dataset;</li>
+<li>reusable parsing flow vs per-KB/per-document configuration;</li>
+<li>portal/search/browse semantics;</li>
+<li>preview and source-trace behavior;</li>
+<li>provider/model capability configuration;</li>
+<li>ingestion-path unification.</li>
+</ul>
+<p>This is <strong>change amplification around unstable bounded
+contexts</strong>. Repeated edits are not merely sloppy implementation;
+many are downstream consequences of an unresolved domain model.</p>
+<p>The monitor should maintain a co-change graph and compute an impact
+prior. A requirement touching high-centrality nodes should trigger
+architecture review and broader verification before implementation
+begins.</p>
+<h3 id="test-success-can-be-manufactured-by-changing-the-oracle">2.8
+Test success can be manufactured by changing the oracle</h3>
+<p>One transcript episode updated several failing expectations on the
+basis that product behavior had evolved, after which dozens of tests
+were green. That may be legitimate. It may also be test laundering:
+changing the oracle to agree with the implementation.</p>
+<p>A monitor cannot classify this by pass/fail alone. It needs a
+test-authority rule:</p>
+<pre class="text"><code>assertion / snapshot / expected-value / fixture changed
+                   ↓
+require authoritative requirement link
++ independent behavior evidence
++ explanation of why the old oracle is invalid</code></pre>
+<p>Mutation testing is relevant because it evaluates whether a suite
+detects intentionally introduced faults, rather than merely whether the
+current implementation passes.[9] Metamorphic testing is useful when a
+precise oracle is unavailable: define relations that must remain true
+across transformed inputs, such as retrieval invariance under harmless
+formatting changes or consistent preview behavior across equivalent
+document conversions.[10]</p>
+<h3 id="operational-failures-are-mixed-with-coding-failures">2.9
+Operational failures are mixed with coding failures</h3>
+<p>One Claude main session recorded 169 API errors:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Category</th>
+<th style="text-align: right;">Count</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Certificate-related</td>
+<td style="text-align: right;">94</td>
+</tr>
+<tr class="even">
+<td>Connection/reset</td>
+<td style="text-align: right;">59</td>
+</tr>
+<tr class="odd">
+<td>Rate limit/overload</td>
+<td style="text-align: right;">11</td>
+</tr>
+<tr class="even">
+<td>Other</td>
+<td style="text-align: right;">4</td>
+</tr>
+<tr class="odd">
+<td>Authentication</td>
+<td style="text-align: right;">1</td>
+</tr>
+</tbody>
+</table>
+<p>If these events enter one generic “agent health entropy” score, the
+controller will make bad decisions. A provider certificate error, a
+shell permission error, a deterministic test failure, and a flawed
+architecture hypothesis require different actions and different retry
+budgets.</p>
+<p>Operational risk and epistemic uncertainty must be separate
+dimensions. Repeated identical certificate failures can imply high
+operational impact but low diagnostic uncertainty.</p>
+<h3 id="the-system-violates-the-users-decision-budget">2.10 The system
+violates the user’s decision budget</h3>
+<p>Claude issued 25 AskUser calls. After a clear instruction on
+2026-06-17 not to ask the user to decide routine implementation
+sequencing, 12 AskUser calls still occurred. Many asked which migration
+area or batch to do next, despite an explicit preference for autonomous
+completion. A few questions were legitimately blocking, such as browser
+connectivity or credentials.</p>
+<p>The controller needs an economic rule based on value of
+information:</p>
+<pre class="text"><code>ask_user only if
+    expected loss without the answer
+  - expected loss after the answer
+  &gt; interruption cost
+and no cheaper local probe can resolve the decision</code></pre>
+<p>Howard’s value-of-information formulation is directly applicable:
+uncertainty reduction matters only through its effect on decisions and
+outcomes.[6]</p>
+<h3
+id="scope-volatility-is-real-not-every-follow-up-is-agent-failure">2.11
+Scope volatility is real; not every follow-up is agent failure</h3>
+<p>The user’s requested product expanded substantially across RAGFlow
+compatibility, agricultural taxonomy, provider management, multimodal
+parsing, Label Studio, ASR, DeepDoc, deployment, UI design, browser
+testing, data migration, and presentation work. The user also explicitly
+requested very large subagent batches at times.</p>
+<p>A fair analysis must not label every subsequent request as rework.
+The agents’ error was often different: they accepted an evolving, very
+large scope without freezing the current acceptance baseline, then made
+broad completion claims.</p>
+<p>The monitor needs to distinguish:</p>
+<ul>
+<li>correction of an accepted requirement;</li>
+<li>discovery of an omitted requirement already present in
+evidence;</li>
+<li>authorized scope change;</li>
+<li>proposed but unapproved enhancement;</li>
+<li>preference reversal;</li>
+<li>environment-induced regression.</li>
+</ul>
+<p>Without that classification, both reward modeling and user-friction
+metrics become misleading.</p>
+<h2 id="probability-model-from-scalar-entropy-to-belief-state">3.
+Probability model: from scalar entropy to belief state</h2>
+<h3 id="model-concrete-hypotheses">3.1 Model concrete hypotheses</h3>
+<p>For a current run, maintain posterior probabilities over hypotheses
+such as:</p>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode rust"><code class="sourceCode rust"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">pub</span> <span class="kw">enum</span> FailureHypothesis <span class="op">{</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    RequirementMissing<span class="op">,</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    AcceptanceArtifactUnparsed<span class="op">,</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    ImplementationDefect<span class="op">,</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    ArchitectureConflict<span class="op">,</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    StaleVerification<span class="op">,</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    WeakTestOracle<span class="op">,</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>    RuntimeEnvironmentMismatch<span class="op">,</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>    ProviderTransientFailure<span class="op">,</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>    DeterministicToolFailure<span class="op">,</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>    ContextLoss<span class="op">,</span></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>    SubagentIntegrationFailure<span class="op">,</span></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>    UnauthorizedScopeExpansion<span class="op">,</span></span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a><span class="kw">pub</span> <span class="kw">struct</span> HypothesisBelief <span class="op">{</span></span>
+<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> hypothesis<span class="op">:</span> FailureHypothesis<span class="op">,</span></span>
+<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> probability<span class="op">:</span> <span class="dt">f64</span><span class="op">,</span></span>
+<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> expected_impact<span class="op">:</span> <span class="dt">f64</span><span class="op">,</span></span>
+<span id="cb7-20"><a href="#cb7-20" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> evidence_ids<span class="op">:</span> <span class="dt">Vec</span><span class="op">&lt;</span>EvidenceId<span class="op">&gt;,</span></span>
+<span id="cb7-21"><a href="#cb7-21" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>The Shannon entropy of this distribution is meaningful: it measures
+diagnostic uncertainty. A count of failures or touched files is merely
+evidence used to update the distribution.</p>
+<h3 id="use-bayesian-updates-and-hierarchical-outcome-models">3.2 Use
+Bayesian updates and hierarchical outcome models</h3>
+<p>For repeatable binary outcomes, maintain Beta-Bernoulli posteriors by
+context:</p>
+<pre class="text"><code>P(action succeeds | agent, task class, failure class, repo region, environment)</code></pre>
+<p>For broader analysis, fit a hierarchical logistic model:</p>
+<pre class="text"><code>logit P(corrective follow-up) =
+    intercept
+  + task class
+  + scope volatility
+  + requirement-artifact completeness
+  + architecture-hotspot exposure
+  + verification modality/freshness
+  + subagent fan-out and join yield
+  + context age/compaction
+  + provider health
+  + agent/model effects
+  + session/project random effects</code></pre>
+<p>This is necessary because the raw history already demonstrates
+confounding: harder tasks receive more tools and verification and also
+receive more corrective feedback.</p>
+<h3 id="calibrate-advisor-probabilities">3.3 Calibrate advisor
+probabilities</h3>
+<p>Every advisor prediction should be recorded and scored after the
+outcome. Use reliability diagrams and the Brier score, originally
+formulated for probability forecasts.[7]</p>
+<p>Useful predictions include:</p>
+<ul>
+<li>probability the next retry succeeds;</li>
+<li>probability a completion claim will survive the next user
+review;</li>
+<li>probability current verification is adequate;</li>
+<li>probability a question is truly blocking;</li>
+<li>probability a fresh agent outperforms continuing the current
+one.</li>
+</ul>
+<p>An advisor that says “0.8” should be correct approximately 80% of the
+time in the relevant stratum. Otherwise its confidence must be
+recalibrated or ignored.</p>
+<h3 id="use-sequential-testing-for-retrystop-decisions">3.4 Use
+sequential testing for retry/stop decisions</h3>
+<p>Retries arrive sequentially. Do not hardcode “three retries.”
+Maintain likelihood under two hypotheses:</p>
+<pre class="text"><code>H_transient: another retry has meaningful success probability
+H_deterministic: the same cause will recur until state changes</code></pre>
+<p>Update the likelihood ratio after each attempt. A Sequential
+Probability Ratio Test can stop as soon as evidence crosses a decision
+threshold; Wald and Wolfowitz established its expected-sample efficiency
+under the classical assumptions.[8]</p>
+<p>In practice:</p>
+<ul>
+<li>repeated identical certificate error: rapidly favor
+deterministic/configuration failure;</li>
+<li>sporadic connection reset with healthy later calls: favor transient
+failure;</li>
+<li>same test assertion after code changes: favor unresolved
+logic/oracle failure;</li>
+<li>different failures after each retry: raise context or architecture
+uncertainty.</li>
+</ul>
+<h3 id="detect-regime-changes-not-only-thresholds">3.5 Detect regime
+changes, not only thresholds</h3>
+<p>Use CUSUM or Bayesian change-point detection on:</p>
+<ul>
+<li>user correction rate;</li>
+<li>verifier failure signatures;</li>
+<li>edit-without-closure cycles;</li>
+<li>subagent join yield;</li>
+<li>provider latency/error rate;</li>
+<li>architecture hotspot churn.</li>
+</ul>
+<p>The question is not merely “is the current rate high?” but “did the
+process move into a worse regime?” Page’s original CUSUM work provides
+the statistical-control foundation.[11]</p>
+<h3 id="treat-the-supervisor-as-a-pomdp-approximation">3.6 Treat the
+supervisor as a POMDP approximation</h3>
+<p>Long-running coding work is partially observed. The true requirement
+state, root cause, and future action outcome are not directly visible.
+Actions can both advance work and acquire information. This is the
+structure of a partially observable Markov decision process: maintain a
+belief state and choose actions for both progress and information
+gain.[4]</p>
+<p>Do not attempt an exact POMDP solver. Use the abstraction
+operationally:</p>
+<pre class="text"><code>belief state
+  → hard safety/policy constraints
+  → generate candidate actions
+  → estimate outcome and information gain
+  → remove dominated actions
+  → choose a receding-horizon action
+  → observe result and update belief</code></pre>
+<p>This yields a concrete reason to add <code>RunProbe</code>: sometimes
+the optimal next action is not another code edit but a cheap
+discriminating experiment.</p>
+<h2 id="pareto-analysis-and-multiobjective-control">4. Pareto analysis
+and multiobjective control</h2>
+<h3
+id="pareto-principle-the-edit-distribution-is-concentrated-but-not-8020">4.1
+Pareto principle: the edit distribution is concentrated, but not
+80/20</h3>
+<p>The top 20% of paths account for roughly 73% of canonical edit
+events, while 30% of paths are needed to account for 80%. Therefore,
+“focus on the top 20%” is directionally useful but mathematically
+inaccurate for this corpus.</p>
+<p>More important than raw edit count is <strong>centrality × rework ×
+requirement ambiguity</strong>. A file edited often because it is a
+generated manifest is different from a domain service repeatedly changed
+because the model is unstable.</p>
+<h3
+id="pareto-optimality-do-not-collapse-decisions-into-one-score-too-early">4.2
+Pareto optimality: do not collapse decisions into one score too
+early</h3>
+<p>An exploratory turn-level proxy analysis compared 122 implementation
+turns on three quality proxies and four cost dimensions. Under coarse
+task/scope buckets, 65 turns (53.3%) were dominated by another observed
+turn. This is not a causal agent ranking, but it shows that the history
+contains strategies that consumed more resources without improving the
+observed quality proxies.</p>
+<p>For each proposed control action, estimate a vector:</p>
+<div class="sourceCode" id="cb12"><pre
+class="sourceCode rust"><code class="sourceCode rust"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">pub</span> <span class="kw">struct</span> ActionValue <span class="op">{</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> expected_requirement_closure<span class="op">:</span> <span class="dt">f64</span><span class="op">,</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> expected_information_gain<span class="op">:</span> <span class="dt">f64</span><span class="op">,</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> expected_verification_gain<span class="op">:</span> <span class="dt">f64</span><span class="op">,</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> expected_architecture_debt_delta<span class="op">:</span> <span class="dt">f64</span><span class="op">,</span></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> expected_user_interruptions<span class="op">:</span> <span class="dt">f64</span><span class="op">,</span></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> expected_latency<span class="op">:</span> <span class="dt">f64</span><span class="op">,</span></span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> expected_compute_cost<span class="op">:</span> <span class="dt">f64</span><span class="op">,</span></span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> rollback_risk<span class="op">:</span> <span class="dt">f64</span><span class="op">,</span></span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Decision procedure:</p>
+<ol type="1">
+<li>Apply hard safety, authority, privacy, and user-policy
+constraints.</li>
+<li>Remove actions dominated on all relevant dimensions.</li>
+<li>Select from the remaining Pareto frontier according to current
+mission priorities.</li>
+<li>Preserve frontier diversity when uncertainty is high.</li>
+</ol>
+<p>NSGA-II is a classic example of nondominated sorting for
+multiobjective optimization.[5] The monitor does not need an
+evolutionary algorithm initially; simple pairwise dominance is
+sufficient for a small action set.</p>
+<h3 id="example">4.3 Example</h3>
+<p>Suppose the current options are:</p>
+<table>
+<colgroup>
+<col style="width: 13%" />
+<col style="width: 17%" />
+<col style="width: 17%" />
+<col style="width: 17%" />
+<col style="width: 17%" />
+<col style="width: 17%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Action</th>
+<th style="text-align: right;">Closure</th>
+<th style="text-align: right;">Information</th>
+<th style="text-align: right;">User cost</th>
+<th style="text-align: right;">Time</th>
+<th style="text-align: right;">Architecture risk</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Retry same agent</td>
+<td style="text-align: right;">medium</td>
+<td style="text-align: right;">low</td>
+<td style="text-align: right;">low</td>
+<td style="text-align: right;">low</td>
+<td style="text-align: right;">medium</td>
+</tr>
+<tr class="even">
+<td>Run browser probe</td>
+<td style="text-align: right;">low</td>
+<td style="text-align: right;">high</td>
+<td style="text-align: right;">none</td>
+<td style="text-align: right;">low</td>
+<td style="text-align: right;">none</td>
+</tr>
+<tr class="odd">
+<td>Spawn 12 agents</td>
+<td style="text-align: right;">high theoretical</td>
+<td style="text-align: right;">medium</td>
+<td style="text-align: right;">none</td>
+<td style="text-align: right;">high</td>
+<td style="text-align: right;">high</td>
+</tr>
+<tr class="even">
+<td>Ask user</td>
+<td style="text-align: right;">high if answered</td>
+<td style="text-align: right;">high</td>
+<td style="text-align: right;">high</td>
+<td style="text-align: right;">medium</td>
+<td style="text-align: right;">none</td>
+</tr>
+<tr class="odd">
+<td>Fresh agent with bounded handoff</td>
+<td style="text-align: right;">medium-high</td>
+<td style="text-align: right;">medium</td>
+<td style="text-align: right;">none</td>
+<td style="text-align: right;">medium</td>
+<td style="text-align: right;">low</td>
+</tr>
+</tbody>
+</table>
+<p>Given the observed history, “spawn 12 agents” is often dominated by a
+smaller bounded decomposition; “ask user” is dominated when a browser or
+repository probe can resolve the issue; “retry same agent” is dominated
+when the failure signature is unchanged and context health is poor.</p>
+<h2 id="software-engineering-interpretations">5. Software-engineering
+interpretations</h2>
+<h3 id="requirements-engineering-build-a-live-traceability-graph">5.1
+Requirements engineering: build a live traceability graph</h3>
+<p>NASA systems-engineering guidance emphasizes clear requirements,
+documented design decisions, and complete traceability.[1] For coding
+agents, represent:</p>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode rust"><code class="sourceCode rust"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="kw">pub</span> <span class="kw">struct</span> RequirementNode <span class="op">{</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> id<span class="op">:</span> RequirementId<span class="op">,</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> statement<span class="op">:</span> <span class="dt">String</span><span class="op">,</span></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> kind<span class="op">:</span> RequirementKind<span class="op">,</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> authority<span class="op">:</span> Authority<span class="op">,</span></span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> source<span class="op">:</span> EvidenceRef<span class="op">,</span></span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> status<span class="op">:</span> RequirementStatus<span class="op">,</span></span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> acceptance<span class="op">:</span> <span class="dt">Vec</span><span class="op">&lt;</span>AcceptanceCriterion<span class="op">&gt;,</span></span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> dependencies<span class="op">:</span> <span class="dt">Vec</span><span class="op">&lt;</span>RequirementId<span class="op">&gt;,</span></span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> conflicts<span class="op">:</span> <span class="dt">Vec</span><span class="op">&lt;</span>RequirementId<span class="op">&gt;,</span></span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> supersedes<span class="op">:</span> <span class="dt">Vec</span><span class="op">&lt;</span>RequirementId<span class="op">&gt;,</span></span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> rejected_alternatives<span class="op">:</span> <span class="dt">Vec</span><span class="op">&lt;</span>RejectedAlternative<span class="op">&gt;,</span></span>
+<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb13-14"><a href="#cb13-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-15"><a href="#cb13-15" aria-hidden="true" tabindex="-1"></a><span class="kw">pub</span> <span class="kw">enum</span> RequirementKind <span class="op">{</span></span>
+<span id="cb13-16"><a href="#cb13-16" aria-hidden="true" tabindex="-1"></a>    Functional<span class="op">,</span></span>
+<span id="cb13-17"><a href="#cb13-17" aria-hidden="true" tabindex="-1"></a>    QualityAttribute<span class="op">,</span></span>
+<span id="cb13-18"><a href="#cb13-18" aria-hidden="true" tabindex="-1"></a>    ArchitectureConstraint<span class="op">,</span></span>
+<span id="cb13-19"><a href="#cb13-19" aria-hidden="true" tabindex="-1"></a>    ValidationObligation<span class="op">,</span></span>
+<span id="cb13-20"><a href="#cb13-20" aria-hidden="true" tabindex="-1"></a>    UserGovernancePreference<span class="op">,</span></span>
+<span id="cb13-21"><a href="#cb13-21" aria-hidden="true" tabindex="-1"></a>    RejectedAlternative<span class="op">,</span></span>
+<span id="cb13-22"><a href="#cb13-22" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>The key addition is <code>RejectedAlternative</code>. Long-running
+agents need negative design memory as much as positive design
+memory.</p>
+<h3 id="architecture-measure-change-amplification">5.2 Architecture:
+measure change amplification</h3>
+<p>Define:</p>
+<pre class="text"><code>change_amplification = weighted impacted components / accepted requirement units</code></pre>
+<p>Weight components by layer, runtime, ownership, and co-change
+centrality. A small UI request that touches portal, controller, core
+ingestion, SQL schema, and e2e tests has high amplification. The monitor
+should pause before editing and require an architecture hypothesis.</p>
+<p>High-centrality files can also indicate missing abstractions or god
+classes. <code>KnowledgeBaseService.java</code> appearing in 24 segments
+across nine active days is a candidate for responsibility decomposition,
+but the monitor should not recommend refactoring solely from count. It
+should combine churn, defect linkage, dependency centrality, and
+requirement diversity.</p>
+<h3 id="verification-and-validation-matrix">5.3 Verification and
+validation matrix</h3>
+<p>Each requirement should name its evidence modes:</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Requirement type</th>
+<th>Minimum evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Compiler/type safety</td>
+<td>build/compile</td>
+</tr>
+<tr class="even">
+<td>Backend business logic</td>
+<td>unit/integration/contract test</td>
+</tr>
+<tr class="odd">
+<td>API behavior</td>
+<td>live request against current service</td>
+</tr>
+<tr class="even">
+<td>UI navigation</td>
+<td>browser route and console check</td>
+</tr>
+<tr class="odd">
+<td>Visual layout</td>
+<td>screenshot/visual comparison and interaction</td>
+</tr>
+<tr class="even">
+<td>Multimodal parsing</td>
+<td>real representative artifact and output assertions</td>
+</tr>
+<tr class="odd">
+<td>Deployment portability</td>
+<td>clean Windows and Linux procedure or reproducible container</td>
+</tr>
+<tr class="even">
+<td>Performance</td>
+<td>measured workload and threshold</td>
+</tr>
+<tr class="odd">
+<td>Security/configuration</td>
+<td>policy/static/runtime check</td>
+</tr>
+</tbody>
+</table>
+<p>A green build is one cell, not universal proof.</p>
+<h3 id="test-engineering-protect-the-oracle">5.4 Test engineering:
+protect the oracle</h3>
+<p>Classify test changes:</p>
+<ul>
+<li>new test for an accepted requirement;</li>
+<li>repair of a broken test harness;</li>
+<li>expectation change authorized by a changed requirement;</li>
+<li>fixture/data update;</li>
+<li>assertion weakening;</li>
+<li>snapshot refresh;</li>
+<li>deletion or skip.</li>
+</ul>
+<p>The last three should receive elevated scrutiny. Add mutation or
+metamorphic checks around high-risk logic, particularly retrieval,
+parser selection, workflow inheritance, and preview conversion.</p>
+<h3 id="process-mining-conformance-not-vanity-metrics">5.5 Process
+mining: conformance, not vanity metrics</h3>
+<p>Define expected process models by task class. For a UI defect:</p>
+<pre class="text"><code>reproduce → localize → edit → build → browser validate → close requirement</code></pre>
+<p>For an operational outage:</p>
+<pre class="text"><code>classify layer → probe health → remediate config/service → retest original operation</code></pre>
+<p>A conformance checker can flag:</p>
+<ul>
+<li>completion before reproduction;</li>
+<li>UI closure without browser validation;</li>
+<li>verification followed by edits without re-verification;</li>
+<li>repeated identical failures without diagnosis change;</li>
+<li>spawned workers without join outcomes;</li>
+<li>test-oracle edits without authority.</li>
+</ul>
+<h3 id="safety-engineering-model-unsafe-control-actions">5.6 Safety
+engineering: model unsafe control actions</h3>
+<p>STPA treats accidents as control problems and asks whether a control
+action is unsafe because it is not provided, provided incorrectly,
+mistimed, or applied too long.[12] The analogy is strong for a coding
+supervisor.</p>
+<p>Unsafe monitor actions include:</p>
+<ul>
+<li>allowing completion when required evidence is stale;</li>
+<li>forcing retry during an authentication/configuration failure;</li>
+<li>switching agents without preserving design constraints;</li>
+<li>spawning workers with overlapping file ownership;</li>
+<li>asking the user after an explicit autonomy preference;</li>
+<li>allowing an agent to change the test oracle without authority;</li>
+<li>stopping a verifier too early;</li>
+<li>continuing edits after the failure hypothesis has stopped
+changing.</li>
+</ul>
+<p>This gives a more concrete safety analysis than “high entropy.”</p>
+<h3 id="distributed-systems-causality-leases-and-idempotency">5.7
+Distributed systems: causality, leases, and idempotency</h3>
+<p>Multiple agents and worktrees make the repository a distributed
+shared state system. Apply familiar mechanisms:</p>
+<ul>
+<li><strong>causal IDs:</strong> every mutation, verifier result, claim,
+and intervention references run/agent/worktree/commit;</li>
+<li><strong>ownership leases:</strong> an agent temporarily owns a file
+or bounded component;</li>
+<li><strong>idempotency keys:</strong> prevent duplicated tool actions
+and repeated migrations;</li>
+<li><strong>join states:</strong> integrated, rejected, superseded,
+failed, timed out;</li>
+<li><strong>vector/epoch semantics:</strong> verifier evidence is valid
+only for the tree/epoch it observed;</li>
+<li><strong>sagas/compensation:</strong> multi-step refactors define
+rollback points and compensating actions.</li>
+</ul>
+<p>This is essential for outcome attribution.</p>
+<h2 id="concrete-control-architecture">6. Concrete control
+architecture</h2>
+<h3 id="evidence-ledger">6.1 Evidence ledger</h3>
+<div class="sourceCode" id="cb17"><pre
+class="sourceCode rust"><code class="sourceCode rust"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="kw">pub</span> <span class="kw">struct</span> EvidenceRecord <span class="op">{</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> id<span class="op">:</span> EvidenceId<span class="op">,</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> run_id<span class="op">:</span> RunId<span class="op">,</span></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> agent_id<span class="op">:</span> AgentId<span class="op">,</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> parent_agent_id<span class="op">:</span> <span class="dt">Option</span><span class="op">&lt;</span>AgentId<span class="op">&gt;,</span></span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> observed_at<span class="op">:</span> DateTime<span class="op">&lt;</span>Utc<span class="op">&gt;,</span></span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> repo_anchor<span class="op">:</span> <span class="dt">Option</span><span class="op">&lt;</span>RepoAnchor<span class="op">&gt;,</span></span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> requirement_ids<span class="op">:</span> <span class="dt">Vec</span><span class="op">&lt;</span>RequirementId<span class="op">&gt;,</span></span>
+<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> provenance<span class="op">:</span> Provenance<span class="op">,</span></span>
+<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> confidence<span class="op">:</span> <span class="dt">f64</span><span class="op">,</span></span>
+<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> payload<span class="op">:</span> EvidenceKind<span class="op">,</span></span>
+<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Raw transcript text can remain ephemeral or encrypted. Persist typed
+evidence, hashes, bounded excerpts, and provenance.</p>
+<h3 id="completion-certificate">6.2 Completion certificate</h3>
+<div class="sourceCode" id="cb18"><pre
+class="sourceCode rust"><code class="sourceCode rust"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="kw">pub</span> <span class="kw">struct</span> CompletionCertificate <span class="op">{</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> scoped_requirements<span class="op">:</span> <span class="dt">Vec</span><span class="op">&lt;</span>RequirementId<span class="op">&gt;,</span></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> closed_requirements<span class="op">:</span> <span class="dt">Vec</span><span class="op">&lt;</span>RequirementId<span class="op">&gt;,</span></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> unresolved_requirements<span class="op">:</span> <span class="dt">Vec</span><span class="op">&lt;</span>RequirementId<span class="op">&gt;,</span></span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> verification<span class="op">:</span> <span class="dt">Vec</span><span class="op">&lt;</span>VerificationCertificate<span class="op">&gt;,</span></span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> validation<span class="op">:</span> <span class="dt">Vec</span><span class="op">&lt;</span>ValidationCertificate<span class="op">&gt;,</span></span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> current_repo_anchor<span class="op">:</span> RepoAnchor<span class="op">,</span></span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> unresolved_agents<span class="op">:</span> <span class="dt">Vec</span><span class="op">&lt;</span>AgentId<span class="op">&gt;,</span></span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> unresolved_incidents<span class="op">:</span> <span class="dt">Vec</span><span class="op">&lt;</span>IncidentId<span class="op">&gt;,</span></span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> test_oracle_changes<span class="op">:</span> <span class="dt">Vec</span><span class="op">&lt;</span>TestOracleChange<span class="op">&gt;,</span></span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> confidence<span class="op">:</span> <span class="dt">f64</span><span class="op">,</span></span>
+<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Hard rule:</p>
+<pre class="text"><code>“all done” is illegal unless
+  scoped requirements are closed or explicitly deferred
+  AND relevant evidence is fresh
+  AND all workers have terminal integration states
+  AND no unresolved blocking incident exists
+  AND test-oracle changes have authority</code></pre>
+<h3 id="belief-state-and-probes">6.3 Belief state and probes</h3>
+<div class="sourceCode" id="cb20"><pre
+class="sourceCode rust"><code class="sourceCode rust"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="kw">pub</span> <span class="kw">struct</span> BeliefState <span class="op">{</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> hypotheses<span class="op">:</span> <span class="dt">Vec</span><span class="op">&lt;</span>HypothesisBelief<span class="op">&gt;,</span></span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> requirement_uncertainty<span class="op">:</span> <span class="dt">f64</span><span class="op">,</span></span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> attribution_uncertainty<span class="op">:</span> <span class="dt">f64</span><span class="op">,</span></span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> environment_uncertainty<span class="op">:</span> <span class="dt">f64</span><span class="op">,</span></span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> model_version<span class="op">:</span> <span class="dt">String</span><span class="op">,</span></span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a><span class="kw">pub</span> <span class="kw">enum</span> ProbeSpec <span class="op">{</span></span>
+<span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a>    ReproduceUserPath <span class="op">{</span> route<span class="op">:</span> <span class="dt">String</span> <span class="op">},</span></span>
+<span id="cb20-11"><a href="#cb20-11" aria-hidden="true" tabindex="-1"></a>    InspectCurrentService <span class="op">{</span> service<span class="op">:</span> <span class="dt">String</span> <span class="op">},</span></span>
+<span id="cb20-12"><a href="#cb20-12" aria-hidden="true" tabindex="-1"></a>    VerifyRepoAnchor<span class="op">,</span></span>
+<span id="cb20-13"><a href="#cb20-13" aria-hidden="true" tabindex="-1"></a>    RunTargetedTest <span class="op">{</span> target<span class="op">:</span> <span class="dt">String</span> <span class="op">},</span></span>
+<span id="cb20-14"><a href="#cb20-14" aria-hidden="true" tabindex="-1"></a>    ParseAcceptanceArtifact <span class="op">{</span> artifact<span class="op">:</span> ArtifactId <span class="op">},</span></span>
+<span id="cb20-15"><a href="#cb20-15" aria-hidden="true" tabindex="-1"></a>    InspectCallGraph <span class="op">{</span> symbol<span class="op">:</span> <span class="dt">String</span> <span class="op">},</span></span>
+<span id="cb20-16"><a href="#cb20-16" aria-hidden="true" tabindex="-1"></a>    CompareRequirementToDiff <span class="op">{</span> requirement<span class="op">:</span> RequirementId <span class="op">},</span></span>
+<span id="cb20-17"><a href="#cb20-17" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>A probe should be selected by expected information gain and cost.</p>
+<h3 id="subagent-lifecycle">6.4 Subagent lifecycle</h3>
+<div class="sourceCode" id="cb21"><pre
+class="sourceCode rust"><code class="sourceCode rust"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="kw">pub</span> <span class="kw">struct</span> AgentLease <span class="op">{</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> agent_id<span class="op">:</span> AgentId<span class="op">,</span></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> task_ids<span class="op">:</span> <span class="dt">Vec</span><span class="op">&lt;</span>RequirementId<span class="op">&gt;,</span></span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> owned_paths<span class="op">:</span> <span class="dt">Vec</span><span class="op">&lt;</span>RepoPath<span class="op">&gt;,</span></span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> started_at<span class="op">:</span> DateTime<span class="op">&lt;</span>Utc<span class="op">&gt;,</span></span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> expires_at<span class="op">:</span> DateTime<span class="op">&lt;</span>Utc<span class="op">&gt;,</span></span>
+<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> expected_result_schema<span class="op">:</span> <span class="dt">String</span><span class="op">,</span></span>
+<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> state<span class="op">:</span> AgentLeaseState<span class="op">,</span></span>
+<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb21-10"><a href="#cb21-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-11"><a href="#cb21-11" aria-hidden="true" tabindex="-1"></a><span class="kw">pub</span> <span class="kw">enum</span> AgentLeaseState <span class="op">{</span></span>
+<span id="cb21-12"><a href="#cb21-12" aria-hidden="true" tabindex="-1"></a>    Running<span class="op">,</span></span>
+<span id="cb21-13"><a href="#cb21-13" aria-hidden="true" tabindex="-1"></a>    Joined<span class="op">,</span></span>
+<span id="cb21-14"><a href="#cb21-14" aria-hidden="true" tabindex="-1"></a>    Integrated<span class="op">,</span></span>
+<span id="cb21-15"><a href="#cb21-15" aria-hidden="true" tabindex="-1"></a>    Rejected<span class="op">,</span></span>
+<span id="cb21-16"><a href="#cb21-16" aria-hidden="true" tabindex="-1"></a>    Superseded<span class="op">,</span></span>
+<span id="cb21-17"><a href="#cb21-17" aria-hidden="true" tabindex="-1"></a>    Failed<span class="op">,</span></span>
+<span id="cb21-18"><a href="#cb21-18" aria-hidden="true" tabindex="-1"></a>    TimedOut<span class="op">,</span></span>
+<span id="cb21-19"><a href="#cb21-19" aria-hidden="true" tabindex="-1"></a>    Cancelled<span class="op">,</span></span>
+<span id="cb21-20"><a href="#cb21-20" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Adaptive fan-out policy:</p>
+<pre class="text"><code>initial cap = 2–4
+increase only if:
+  decomposition independence is high
+  path overlap is low
+  recent terminal-result yield is healthy
+  integration queue is short
+  provider health is stable
+otherwise decrease cap</code></pre>
+<h3 id="action-selection">6.5 Action selection</h3>
+<div class="sourceCode" id="cb23"><pre
+class="sourceCode rust"><code class="sourceCode rust"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="kw">pub</span> <span class="kw">struct</span> ActionCandidate <span class="op">{</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> action<span class="op">:</span> ControlAction<span class="op">,</span></span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> preconditions<span class="op">:</span> <span class="dt">Vec</span><span class="op">&lt;</span>PolicyPredicate<span class="op">&gt;,</span></span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> value<span class="op">:</span> ActionValue<span class="op">,</span></span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> predicted_success<span class="op">:</span> <span class="dt">f64</span><span class="op">,</span></span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> prediction_interval<span class="op">:</span> (<span class="dt">f64</span><span class="op">,</span> <span class="dt">f64</span>)<span class="op">,</span></span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> evidence<span class="op">:</span> <span class="dt">Vec</span><span class="op">&lt;</span>EvidenceId<span class="op">&gt;,</span></span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Controller:</p>
+<pre class="text"><code>1. Reconstruct authoritative scope and current repo anchor.
+2. Update hypotheses from new evidence.
+3. Apply hard policy and safety constraints.
+4. Generate Continue / Probe / Verify / Retry / Intervene / Switch / Spawn / Ask / Abort candidates.
+5. Remove dominated candidates.
+6. Use the LLM advisor only to discriminate among allowed frontier candidates.
+7. Validate the proposal deterministically.
+8. Execute one bounded action.
+9. Record outcome and update calibrated models.</code></pre>
+<h2 id="hard-policies-justified-by-this-history">7. Hard policies
+justified by this history</h2>
+<h3 id="completion">Completion</h3>
+<ul>
+<li>Block broad completion if any authoritative requirement is open,
+ambiguous, or lacks evidence.</li>
+<li>Block completion when relevant repository changes occurred after the
+verifier’s anchor.</li>
+<li>Block completion while spawned workers lack terminal integration
+states.</li>
+<li>Downgrade wording automatically: “implemented but not
+browser-validated,” not “fully fixed.”</li>
+</ul>
+<h3 id="ui">UI</h3>
+<ul>
+<li>Any UI-affecting diff requires a browser route check against the
+current build.</li>
+<li>Layout or visual requirements require screenshot evidence or
+explicit human acceptance.</li>
+<li>A frontend build alone cannot close a UI requirement.</li>
+</ul>
+<h3 id="tests">Tests</h3>
+<ul>
+<li>Changes to assertions, snapshots, expected values, fixtures, or
+skips require <code>SpecAuthority</code>.</li>
+<li>Tests changed in the same turn cannot be the sole evidence that
+behavior is correct.</li>
+<li>High-risk parser/retrieval behavior should receive mutation or
+metamorphic checks.</li>
+</ul>
+<h3 id="subagents">Subagents</h3>
+<ul>
+<li>Enforce an adaptive WIP cap.</li>
+<li>Prevent overlapping path leases unless explicitly coordinated.</li>
+<li>Require result schemas and join outcomes.</li>
+<li>Do not start another workflow batch while the integration queue
+exceeds capacity.</li>
+</ul>
+<h3 id="questions">Questions</h3>
+<ul>
+<li>Preserve explicit user governance preferences as hard policy.</li>
+<li>Run a value-of-information check before asking.</li>
+<li>Routine sequencing, file choice, testing, or debugging questions are
+resolved locally.</li>
+<li>Ask only for preferences, authority, credentials, irreversible
+choices, or genuinely unavailable business facts.</li>
+</ul>
+<h3 id="retry-and-switching">Retry and switching</h3>
+<ul>
+<li>Classify failure layer before retry.</li>
+<li>Maintain per-signature retry likelihood and sequential stopping
+thresholds.</li>
+<li>Switching agents on the same unhealthy provider is not
+diversification.</li>
+<li>A fresh agent must receive authoritative constraints, rejected
+alternatives, current repo anchor, unresolved requirements, and verified
+evidence—not a prose dump.</li>
+</ul>
+<h3 id="architecture">Architecture</h3>
+<ul>
+<li>High-centrality hotspot edits require an impact map.</li>
+<li>Cross-layer changes require contract/integration evidence.</li>
+<li>New domain concepts require explicit authority before
+implementation.</li>
+</ul>
+<h2 id="metrics-that-should-replace-entropy-score-dashboards">8. Metrics
+that should replace “entropy score” dashboards</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Metric</th>
+<th>Definition</th>
+<th>Failure it catches</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Verified Requirement Closure Rate</td>
+<td>Requirements closed with fresh evidence / authoritative scoped
+requirements</td>
+<td>False completion</td>
+</tr>
+<tr class="even">
+<td>Completion Claim Precision</td>
+<td>Completion claims surviving next review / claims</td>
+<td>Overclaiming</td>
+</tr>
+<tr class="odd">
+<td>Fresh Verification Coverage</td>
+<td>Weighted changed surface covered by fresh verifier evidence</td>
+<td>Stale tests</td>
+</tr>
+<tr class="even">
+<td>Validation Coverage</td>
+<td>User workflows/visual requirements with intended-environment
+evidence</td>
+<td>Build-as-validation</td>
+</tr>
+<tr class="odd">
+<td>Requirement Recall</td>
+<td>Authoritative requirements represented in current case file</td>
+<td>Context loss</td>
+</tr>
+<tr class="even">
+<td>Rejected-Alternative Recurrence</td>
+<td>Reintroduced rejected designs per run</td>
+<td>Memory failure</td>
+</tr>
+<tr class="odd">
+<td>User Interruption Regret</td>
+<td>Questions later shown answerable by local probes</td>
+<td>Annoying escalation</td>
+</tr>
+<tr class="even">
+<td>Subagent Join Yield</td>
+<td>Integrated terminal results / agents started</td>
+<td>Fan-out overload</td>
+</tr>
+<tr class="odd">
+<td>Integration Queue Age</td>
+<td>Time/results waiting for main-agent integration</td>
+<td>Coordination bottleneck</td>
+</tr>
+<tr class="even">
+<td>Change Amplification</td>
+<td>Weighted affected components / requirement units</td>
+<td>Architecture drift</td>
+</tr>
+<tr class="odd">
+<td>Test-Oracle Mutation Rate</td>
+<td>Authority-sensitive test edits / implementation turns</td>
+<td>Test laundering</td>
+</tr>
+<tr class="even">
+<td>Attribution Completeness</td>
+<td>Outcomes linked to exact mutations/agents/anchors</td>
+<td>Causal ambiguity</td>
+</tr>
+<tr class="odd">
+<td>Probability Calibration</td>
+<td>Brier score and reliability by task stratum</td>
+<td>Misleading advisor confidence</td>
+</tr>
+<tr class="even">
+<td>Scope Volatility</td>
+<td>Authorized requirement additions/removals per unit time</td>
+<td>Unfair outcome attribution</td>
+</tr>
+</tbody>
+</table>
+<p>A dashboard should show these as a vector. It may also show entropy
+of the belief distribution, but not replace the vector with one
+scalar.</p>
+<h2 id="recommended-implementation-slices">9. Recommended implementation
+slices</h2>
+<h3 id="slice-1-offline-history-compiler">Slice 1: Offline history
+compiler</h3>
+<ul>
+<li>Parse Codex, Claude Code, Pi, and OpenCode histories.</li>
+<li>Reconstruct sessions, parent/subagent topology, tool
+attempts/outcomes, and interruptions.</li>
+<li>Canonicalize repository paths and worktrees.</li>
+<li>Emit typed observations with provenance and deduplication.</li>
+<li>Redact or hash raw private content.</li>
+</ul>
+<p>Deliverable: repeatable case reconstruction and the same analyses
+used in this report.</p>
+<h3 id="slice-2-requirement-and-authority-ledger">Slice 2: Requirement
+and authority ledger</h3>
+<ul>
+<li>Extract candidate requirements from user text, documents,
+screenshots, and annotations.</li>
+<li>Store accepted, rejected, superseded, and proposed states.</li>
+<li>Add explicit acceptance criteria and evidence links.</li>
+<li>Preserve user governance preferences.</li>
+</ul>
+<p>Deliverable: a live requirement graph and bounded case file.</p>
+<h3 id="slice-3-repository-epochs-and-evidence-freshness">Slice 3:
+Repository epochs and evidence freshness</h3>
+<ul>
+<li>Assign a monotonic mutation epoch.</li>
+<li>Anchor every verifier to commit/tree/epoch and covered paths.</li>
+<li>Invalidate evidence after relevant changes.</li>
+<li>Implement the completion certificate.</li>
+</ul>
+<p>Deliverable: deterministic stale-verification and false-closure
+prevention.</p>
+<h3 id="slice-4-agent-lifecycle-and-wip-controller">Slice 4: Agent
+lifecycle and WIP controller</h3>
+<ul>
+<li>Add leases, path ownership, result schemas, join barriers, and
+integration queue.</li>
+<li>Start with a cap of 2–4 workers and adapt from join yield and
+overlap.</li>
+<li>Record every spawn-to-outcome transition.</li>
+</ul>
+<p>Deliverable: controlled parallelism instead of unbounded fan-out.</p>
+<h3 id="slice-5-failure-taxonomy-and-sequential-retry">Slice 5: Failure
+taxonomy and sequential retry</h3>
+<ul>
+<li>Separate provider, transport, auth, rate limit, shell, repository,
+verifier, test-oracle, and logic failures.</li>
+<li>Fingerprint errors.</li>
+<li>Maintain posteriors and sequential retry/stop decisions.</li>
+</ul>
+<p>Deliverable: no more retrying the wrong layer or switching agents
+pointlessly.</p>
+<h3 id="slice-6-process-conformance-and-probes">Slice 6: Process
+conformance and probes</h3>
+<ul>
+<li>Define task-class process models.</li>
+<li>Detect missing reproduction, verification-after-edit gaps, repeated
+unchanged failure signatures, and unjoined workers.</li>
+<li>Add deterministic probes as first-class actions.</li>
+</ul>
+<p>Deliverable: active uncertainty reduction before intervention.</p>
+<h3 id="slice-7-pareto-action-policy-and-bounded-llm-advisor">Slice 7:
+Pareto action policy and bounded LLM advisor</h3>
+<ul>
+<li>Compute action value vectors.</li>
+<li>Apply hard constraints and remove dominated actions.</li>
+<li>Let the LLM rank only the allowed frontier and explain the dominant
+uncertainty.</li>
+<li>Validate all packets deterministically.</li>
+</ul>
+<p>Deliverable: multiobjective control without giving the LLM
+unrestricted authority.</p>
+<h3 id="slice-8-outcome-learning-and-replay">Slice 8: Outcome learning
+and replay</h3>
+<ul>
+<li>Define accepted outcomes and delayed regressions.</li>
+<li>Score probability calibration.</li>
+<li>Replay historical episodes under alternative policies.</li>
+<li>Run prospective experiments on WIP limits, completion certificates,
+and question gates.</li>
+</ul>
+<p>Deliverable: evidence that the monitor improves outcomes, not merely
+produces diagnoses.</p>
+<h2 id="highest-value-experiments">10. Highest-value experiments</h2>
+<ol type="1">
+<li><strong>Completion-certificate experiment:</strong> compare
+correction/reopen rates before and after blocking broad completion
+without requirement/evidence closure.</li>
+<li><strong>WIP-cap experiment:</strong> compare 2–4 workers against 10+
+workers on matched task decompositions; measure join yield, cycle time,
+overlap, and accepted closure.</li>
+<li><strong>UI evidence experiment:</strong> require browser validation
+for UI diffs and measure immediate user corrections.</li>
+<li><strong>Question-gate experiment:</strong> run VOI/local-probe
+policy and measure interruption regret without increasing harmful
+autonomous decisions.</li>
+<li><strong>Test-authority experiment:</strong> gate expectation changes
+and measure regressions plus legitimate update latency.</li>
+<li><strong>Requirement-memory experiment:</strong> inject rejected
+alternatives and governance preferences into fresh-agent handoffs;
+measure recurrence.</li>
+<li><strong>Causal attribution experiment:</strong> require
+commit/worktree/agent anchors for every verifier and compare diagnosis
+accuracy.</li>
+</ol>
+<p>For inference, use project/task-matched comparisons and hierarchical
+models. Do not compare raw agent averages across different task
+mixes.</p>
+<h2 id="final-architectural-conclusion">11. Final architectural
+conclusion</h2>
+<p>The original “entropy controller” idea becomes production-grade when
+reframed as four coupled systems:</p>
+<pre class="text"><code>1. Requirements and authority system
+   What is actually required, rejected, or undecided?
+
+2. Belief and evidence system
+   What hypotheses explain the current state, with what probabilities?
+
+3. Multiobjective control system
+   Which allowed action best trades closure, information, cost, risk, and user burden?
+
+4. Causal outcome system
+   What action changed what state, and did it improve accepted outcomes?</code></pre>
+<p>The transcript history shows that the largest failures happen at the
+boundaries among these systems. Agents write competent local patches but
+lose the global contract. They validate the artifact they happened to
+create rather than the user workflow. They parallelize discovery faster
+than they can integrate evidence. They modify test or design assumptions
+without a durable authority chain. They then declare closure based on
+activity.</p>
+<p>The monitor’s core product proposition should therefore be:</p>
+<blockquote>
+<p><strong>An external control plane that turns fragmented agent
+activity into traceable, probabilistically calibrated, verified
+requirement closure.</strong></p>
+</blockquote>
+<p>That is more defensible and measurable than “an LLM that judges
+logs,” and more precise than “an entropy monitor.”</p>
+<h2 id="references">References</h2>
+<p>[1] NASA, <em>NASA Systems Engineering Handbook, Rev. 2</em>;
+includes requirements traceability and the distinction between product
+verification and product validation.
+https://www.nasa.gov/wp-content/uploads/2018/09/nasa_systems_engineering_handbook_0.pdf</p>
+<p>[2] J. D. C. Little, “A Proof for the Queuing Formula: L = λW,”
+<em>Operations Research</em>, 1961.
+https://www.isye.gatech.edu/~spyros/courses/IE7201/Fall-13/Little-OR-paper.pdf</p>
+<p>[3] IEEE Task Force on Process Mining, <em>Process Mining
+Manifesto</em>, 2011. https://www.tf-pm.org/upload/1580737614108.pdf</p>
+<p>[4] L. P. Kaelbling, M. L. Littman, and A. R. Cassandra, “Planning
+and Acting in Partially Observable Stochastic Domains,” <em>Artificial
+Intelligence</em>, 1998.
+https://people.csail.mit.edu/lpk/papers/aij98-pomdp.pdf</p>
+<p>[5] K. Deb, A. Pratap, S. Agarwal, and T. Meyarivan, “A Fast and
+Elitist Multiobjective Genetic Algorithm: NSGA-II,” <em>IEEE
+Transactions on Evolutionary Computation</em>, 2002.
+https://ieeexplore.ieee.org/document/996017</p>
+<p>[6] R. A. Howard, “Information Value Theory,” <em>IEEE Transactions
+on Systems Science and Cybernetics</em>, 1966.</p>
+<p>[7] G. W. Brier, “Verification of Forecasts Expressed in Terms of
+Probability,” <em>Monthly Weather Review</em>, 1950.
+https://journals.ametsoc.org/view/journals/mwre/78/1/1520-0493_1950_078_0001_vofeit_2_0_co_2.xml</p>
+<p>[8] A. Wald and J. Wolfowitz, “Optimum Character of the Sequential
+Probability Ratio Test,” <em>Annals of Mathematical Statistics</em>,
+1948.
+https://projecteuclid.org/journals/annals-of-mathematical-statistics/volume-19/issue-3/Optimum-Character-of-the-Sequential-Probability-Ratio-Test/10.1214/aoms/1177730197.full</p>
+<p>[9] Y. Jia and M. Harman, “An Analysis and Survey of the Development
+of Mutation Testing,” <em>IEEE Transactions on Software
+Engineering</em>, 2011. https://doi.org/10.1109/TSE.2010.62</p>
+<p>[10] T. Y. Chen, S. C. Cheung, and S. M. Yiu, “Metamorphic Testing: A
+New Approach for Generating Next Test Cases,” HKUST Technical Report,
+1998.
+https://www.cse.ust.hk/faculty/scc/publ/CS98-01-metamorphictesting.pdf</p>
+<p>[11] E. S. Page, “Continuous Inspection Schemes,”
+<em>Biometrika</em>, 1954. https://doi.org/10.1093/biomet/41.1-2.100</p>
+<p>[12] N. Leveson and J. Thomas, <em>STPA Handbook / STPA Primer</em>.
+https://psas.scripts.mit.edu/home/wp-content/uploads/2013/10/An-STPA-Primer-version-0-4.pdf</p>
+</body>
+</html>
