@@ -149,6 +149,7 @@ agent-monitor probe --workspace=<path>
 agent-monitor handoff --workspace=<path> --target-agent=claude-code
 agent-monitor config advisor --workspace=<path> --endpoint=<url> --model=<model> --api-key-env=<ENV>
 agent-monitor config import-local --workspace=<path> --advisor-credential-source=coding-plan --advisor-credential-file=<path>
+agent-monitor config verifier --workspace=<path> --id=<id> --command=<cmd> --scope=full|targeted|style --timeout-secs=<n> --path=<path>
 ```
 
 Never copy Codex or Claude runtime credentials into this project. Advisor credentials must come from a dedicated coding-plan profile or env var, not `.codex` or `.claude` auth files.

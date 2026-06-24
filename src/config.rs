@@ -109,6 +109,63 @@ pub fn write_advisor_endpoint_config(
     Ok(config)
 }
 
+pub fn write_verifier_config(
+    workspace_root: impl AsRef<Path>,
+    mut verifier: VerifierConfig,
+) -> Result<ProjectConfig, ProjectConfigWriteError> {
+    sanitize_verifier_config(&mut verifier)?;
+    let root = workspace_root.as_ref().join(".agent-monitor");
+    fs::create_dir_all(&root).map_err(|source| ProjectConfigWriteError::CreateDir {
+        path: root.clone(),
+        source,
+    })?;
+    let mut config = ProjectConfig::load(&root)?;
+    if let Some(existing) = config
+        .verifiers
+        .iter_mut()
+        .find(|existing| existing.id == verifier.id)
+    {
+        *existing = verifier;
+    } else {
+        config.verifiers.push(verifier);
+    }
+    write_project_config_without_advisor_validation(&root, &config)?;
+    Ok(config)
+}
+
+fn sanitize_verifier_config(verifier: &mut VerifierConfig) -> Result<(), ProjectConfigWriteError> {
+    verifier.id = verifier.id.trim().to_string();
+    verifier.command = verifier.command.trim().to_string();
+    verifier.paths = verifier
+        .paths
+        .iter()
+        .map(|path| path.trim().to_string())
+        .filter(|path| !path.is_empty())
+        .collect();
+    verifier.acceptance_patterns = verifier
+        .acceptance_patterns
+        .iter()
+        .map(|pattern| pattern.trim().to_string())
+        .filter(|pattern| !pattern.is_empty())
+        .collect();
+    if verifier.id.is_empty() {
+        return Err(ProjectConfigWriteError::InvalidOptions(
+            "verifier id must not be empty".into(),
+        ));
+    }
+    if verifier.command.is_empty() {
+        return Err(ProjectConfigWriteError::InvalidOptions(
+            "verifier command must not be empty".into(),
+        ));
+    }
+    if verifier.timeout_secs == 0 {
+        return Err(ProjectConfigWriteError::InvalidOptions(
+            "verifier timeout_secs must be greater than zero".into(),
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LocalAgentConfigImportOptions {
     pub codex: bool,
@@ -710,6 +767,20 @@ fn write_project_config(
     config: &ProjectConfig,
 ) -> Result<(), ProjectConfigWriteError> {
     validate_project_config_for_write(config, store_root)?;
+    write_project_config_content(store_root, config)
+}
+
+fn write_project_config_without_advisor_validation(
+    store_root: &Path,
+    config: &ProjectConfig,
+) -> Result<(), ProjectConfigWriteError> {
+    write_project_config_content(store_root, config)
+}
+
+fn write_project_config_content(
+    store_root: &Path,
+    config: &ProjectConfig,
+) -> Result<(), ProjectConfigWriteError> {
     let path = store_root.join("config.json");
     let content = serde_json::to_string_pretty(&config).map_err(|source| {
         ProjectConfigWriteError::Encode {

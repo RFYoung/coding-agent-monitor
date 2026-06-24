@@ -460,6 +460,12 @@ Project config supports a verifier registry:
 When changed source/test files match verifier paths, the case file recommends
 those verifier commands and verification packets render them explicitly.
 
+The CLI registers or updates verifier ids without hand-editing JSON:
+
+```powershell
+agent-monitor config verifier --workspace=<path> --id=<id> --command=<cmd> --scope=full|targeted|style --timeout-secs=<n> --path=<path>
+```
+
 The CLI can also execute a configured verifier directly:
 
 ```powershell
@@ -683,6 +689,7 @@ Add:
 ```powershell
 agent-monitor advise --workspace=<path>
 agent-monitor trail --workspace=<path>
+agent-monitor config verifier --workspace=<path> --id=<id> --command=<cmd> --scope=full|targeted|style --timeout-secs=<n> --path=<path>
 agent-monitor verify --workspace=<path> --verifier=<id>
 agent-monitor handoff --workspace=<path> --agent=<agent>
 agent-monitor repo-audit --workspace=<path>
@@ -941,6 +948,9 @@ Add focused tests before implementation:
   capture rows with action, target agent, packet id, dispatch status, outcome
   count, full detail payload, and display-filter support.
 - CLI parses `advise --workspace=<path>`.
+- CLI parses `config verifier --workspace=<path> --id=<id>
+  --command=<cmd> --scope=full|targeted|style --timeout-secs=<n>
+  --path=<path>`.
 - CLI parses `verify --workspace=<path> --verifier=<id>`.
 - CLI parses `handoff --workspace=<path> --agent=<agent>`.
 - CLI parses `memory promote --workspace=<path> --memory-id=<id>

@@ -71,7 +71,7 @@ pub use config::{
     LocalAgentConfigImportOptions, LocalClaudeCodeConfig, LocalCodexConfig, PolicyConfig,
     ProjectConfig, ProjectConfigError, ProjectConfigWriteError, SecurityConfig, VerificationScope,
     VerifierConfig, import_coding_plan_advisor_credentials, import_local_agent_configs,
-    write_advisor_endpoint_config,
+    write_advisor_endpoint_config, write_verifier_config,
 };
 pub use dev_history::{
     DevHistoryAnalysisOptions, DevHistoryCount, DevHistoryError, DevHistoryFinding,

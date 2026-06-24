@@ -5,16 +5,16 @@ use coding_agent_monitor::{
     DashboardSnapshot, DevHistoryAnalysisOptions, DevHistoryRawExportOptions, Event, EventKind,
     InstallMode, Intervention, InterventionKind, LocalAgentConfigImportOptions, MemorySource,
     ProjectConfig, ProjectStore, RepoHunkHistoryQuery, RequirementGraphQuery, TraceEntry,
-    WrappedCommand, adapter_capabilities_for_config, adapter_hook_response, advise_workspace,
-    agent_kind_label, analyze_local_dev_history, create_demo_workspace,
-    detect_running_agents_from_system, export_raw_dev_history, handoff_workspace,
-    import_coding_plan_advisor_credentials, import_local_agent_configs,
+    VerificationScope, VerifierConfig, WrappedCommand, adapter_capabilities_for_config,
+    adapter_hook_response, advise_workspace, agent_kind_label, analyze_local_dev_history,
+    create_demo_workspace, detect_running_agents_from_system, export_raw_dev_history,
+    handoff_workspace, import_coding_plan_advisor_credentials, import_local_agent_configs,
     injection_plan_for_workspace, install_agent_injection, judge_snapshot, load_blame_report,
     load_calibration_report, load_completion_certificate_report, load_decision_trails,
     load_repo_hunk_history, load_requirement_graph, normalize_adapter_event,
     prepare_wrapped_launch, promote_memory_candidate, record_repo_audit_history,
     record_trace_entry, run_adapter_jsonl_with_store, run_jsonl, run_jsonl_with_store, run_probe,
-    run_verifier, run_wrapped_command, write_advisor_endpoint_config,
+    run_verifier, run_wrapped_command, write_advisor_endpoint_config, write_verifier_config,
 };
 use std::env;
 use std::io::Write;
@@ -262,6 +262,22 @@ fn main() -> ExitCode {
                 }
             }
         }
+        CliCommand::ConfigVerifier {
+            workspace,
+            verifier,
+        } => match write_verifier_config(&workspace, verifier) {
+            Ok(config) => {
+                if let Err(error) = serde_json::to_writer_pretty(std::io::stdout(), &config) {
+                    eprintln!("encode project config: {error}");
+                    return ExitCode::from(1);
+                }
+                println!();
+            }
+            Err(error) => {
+                eprintln!("{error}");
+                return ExitCode::from(1);
+            }
+        },
         CliCommand::ConfigImportLocal {
             workspace,
             home,
@@ -624,6 +640,10 @@ enum CliCommand {
     ConfigAdvisor {
         workspace: PathBuf,
         update: AdvisorEndpointConfigUpdate,
+    },
+    ConfigVerifier {
+        workspace: PathBuf,
+        verifier: VerifierConfig,
     },
     ConfigImportLocal {
         workspace: PathBuf,
@@ -1019,12 +1039,13 @@ fn parse_config_args(args: impl IntoIterator<Item = String>) -> Result<CliComman
     let args = args.into_iter().collect::<Vec<_>>();
     match args.first().map(String::as_str) {
         Some("advisor") => parse_config_advisor_args(args.into_iter().skip(1)),
+        Some("verifier") => parse_config_verifier_args(args.into_iter().skip(1)),
         Some("import-local") => parse_config_import_local_args(args.into_iter().skip(1)),
         Some("import-coding-plan-credentials") => {
             parse_config_import_coding_plan_credentials_args(args.into_iter().skip(1))
         }
         _ => Err(
-            "config requires subcommand: advisor|import-local|import-coding-plan-credentials"
+            "config requires subcommand: advisor|verifier|import-local|import-coding-plan-credentials"
                 .into(),
         ),
     }
@@ -1110,6 +1131,79 @@ fn parse_advisor_credential_source(value: &str) -> Result<AdvisorCredentialSourc
         "env" => Ok(AdvisorCredentialSource::Env),
         "coding_plan" | "coding-plan" => Ok(AdvisorCredentialSource::CodingPlan),
         _ => Err("credential source must be env or coding-plan".into()),
+    }
+}
+
+fn parse_config_verifier_args(
+    args: impl IntoIterator<Item = String>,
+) -> Result<CliCommand, String> {
+    let mut workspace = PathBuf::from(".");
+    let mut id = None;
+    let mut command = None;
+    let mut scope = VerificationScope::Full;
+    let mut timeout_secs = 300;
+    let mut paths = Vec::new();
+    let mut acceptance_patterns = Vec::new();
+
+    for arg in args {
+        if let Some(value) = arg.strip_prefix("--workspace=") {
+            workspace = PathBuf::from(value);
+        } else if let Some(value) = arg.strip_prefix("--id=") {
+            let value = value.trim();
+            if value.is_empty() {
+                return Err("--id must not be empty".into());
+            }
+            id = Some(value.to_string());
+        } else if let Some(value) = arg.strip_prefix("--command=") {
+            let value = value.trim();
+            if value.is_empty() {
+                return Err("--command must not be empty".into());
+            }
+            command = Some(value.to_string());
+        } else if let Some(value) = arg.strip_prefix("--scope=") {
+            scope = parse_verification_scope(value)?;
+        } else if let Some(value) = arg.strip_prefix("--timeout-secs=") {
+            timeout_secs = parse_positive_u64("--timeout-secs", value)?;
+        } else if let Some(value) = arg.strip_prefix("--path=") {
+            let value = value.trim();
+            if value.is_empty() {
+                return Err("--path must not be empty".into());
+            }
+            paths.push(value.to_string());
+        } else if let Some(value) = arg.strip_prefix("--acceptance-pattern=") {
+            let value = value.trim();
+            if value.is_empty() {
+                return Err("--acceptance-pattern must not be empty".into());
+            }
+            acceptance_patterns.push(value.to_string());
+        } else {
+            return Err(format!("unknown config verifier argument: {arg}"));
+        }
+    }
+
+    let id = id.ok_or_else(|| "config verifier requires --id=<id>".to_string())?;
+    let command =
+        command.ok_or_else(|| "config verifier requires --command=<command>".to_string())?;
+    Ok(CliCommand::ConfigVerifier {
+        workspace,
+        verifier: VerifierConfig {
+            id,
+            command,
+            scope,
+            timeout_secs,
+            paths,
+            acceptance_patterns,
+        },
+    })
+}
+
+fn parse_verification_scope(value: &str) -> Result<VerificationScope, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "full" => Ok(VerificationScope::Full),
+        "targeted" => Ok(VerificationScope::Targeted),
+        "style" => Ok(VerificationScope::Style),
+        "" => Err("--scope must not be empty".into()),
+        _ => Err("--scope must be full, targeted, or style".into()),
     }
 }
 
@@ -1513,6 +1607,17 @@ fn non_empty_arg<'a>(name: &str, value: &'a str) -> Result<&'a str, String> {
 }
 
 fn parse_positive_u32(name: &str, value: &str) -> Result<u32, String> {
+    let parsed = value
+        .parse()
+        .map_err(|_| format!("{name} must be a positive integer"))?;
+    if parsed == 0 {
+        Err(format!("{name} must be a positive integer"))
+    } else {
+        Ok(parsed)
+    }
+}
+
+fn parse_positive_u64(name: &str, value: &str) -> Result<u64, String> {
     let parsed = value
         .parse()
         .map_err(|_| format!("{name} must be a positive integer"))?;
@@ -2352,6 +2457,7 @@ mod tests {
             | CliCommand::Ingest { .. }
             | CliCommand::HookResponse { .. }
             | CliCommand::ConfigAdvisor { .. }
+            | CliCommand::ConfigVerifier { .. }
             | CliCommand::ConfigImportLocal { .. }
             | CliCommand::ConfigImportCodingPlanCredentials { .. }
             | CliCommand::Advise { .. }
@@ -2408,6 +2514,7 @@ mod tests {
             | CliCommand::Ingest { .. }
             | CliCommand::HookResponse { .. }
             | CliCommand::ConfigAdvisor { .. }
+            | CliCommand::ConfigVerifier { .. }
             | CliCommand::ConfigImportLocal { .. }
             | CliCommand::ConfigImportCodingPlanCredentials { .. }
             | CliCommand::Advise { .. }
@@ -3630,6 +3737,65 @@ mod tests {
 
         assert!(error.contains("local CLI auth"));
         assert!(error.contains("dedicated coding-plan"));
+    }
+
+    #[test]
+    fn parses_config_verifier_command() {
+        let command = parse_cli([
+            "config",
+            "verifier",
+            "--workspace=E:/demo",
+            "--id=smoke",
+            "--command=cargo test --quiet",
+            "--scope=full",
+            "--timeout-secs=900",
+            "--path=src/lib.rs",
+            "--path=tests/entropy_control.rs",
+            "--acceptance-pattern=runtime_validation:native_gui",
+        ])
+        .expect("parse config verifier command");
+
+        match command {
+            CliCommand::ConfigVerifier {
+                workspace,
+                verifier,
+            } => {
+                assert_eq!(workspace, PathBuf::from("E:/demo"));
+                assert_eq!(verifier.id, "smoke");
+                assert_eq!(verifier.command, "cargo test --quiet");
+                assert_eq!(
+                    verifier.scope,
+                    coding_agent_monitor::VerificationScope::Full
+                );
+                assert_eq!(verifier.timeout_secs, 900);
+                assert_eq!(
+                    verifier.paths,
+                    vec![
+                        "src/lib.rs".to_string(),
+                        "tests/entropy_control.rs".to_string()
+                    ]
+                );
+                assert_eq!(
+                    verifier.acceptance_patterns,
+                    vec!["runtime_validation:native_gui".to_string()]
+                );
+            }
+            _ => panic!("expected config verifier command"),
+        }
+    }
+
+    #[test]
+    fn config_verifier_command_rejects_empty_command() {
+        let error = parse_cli([
+            "config",
+            "verifier",
+            "--id=smoke",
+            "--command= ",
+            "--scope=targeted",
+        ])
+        .expect_err("empty verifier command should fail");
+
+        assert!(error.contains("--command"));
     }
 
     #[test]

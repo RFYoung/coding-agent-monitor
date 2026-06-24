@@ -141,6 +141,158 @@ fn advisor_endpoint_config_writer_preserves_existing_policy_and_verifiers() {
 }
 
 #[test]
+fn verifier_config_writer_upserts_verifier_without_touching_advisor_or_policy() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let store = ProjectStore::open(temp.path()).expect("store");
+    std::fs::write(
+        store.root().join("config.json"),
+        r#"{
+          "policy": {
+            "switch_agent_cooldown_min": 45
+          },
+          "advisor": {
+            "enabled": true,
+            "provider": {
+              "endpoint": "http://127.0.0.1:8080/v1/chat/completions",
+              "model": "local-advisor",
+              "api_key_env": "LOCAL_ADVISOR_KEY"
+            }
+          },
+          "verifiers": [
+            {
+              "id": "smoke",
+              "command": "cargo test old",
+              "scope": "targeted",
+              "timeout_secs": 30,
+              "paths": ["src/old.rs"]
+            }
+          ]
+        }"#,
+    )
+    .expect("seed config");
+
+    let updated = coding_agent_monitor::write_verifier_config(
+        temp.path(),
+        coding_agent_monitor::VerifierConfig {
+            id: "smoke".into(),
+            command: "cargo test --quiet".into(),
+            scope: VerificationScope::Full,
+            timeout_secs: 900,
+            paths: vec!["src/lib.rs".into(), "tests/entropy_control.rs".into()],
+            acceptance_patterns: vec!["runtime_validation:native_gui".into()],
+        },
+    )
+    .expect("write verifier config");
+
+    assert_eq!(updated.policy.switch_agent_cooldown_min, 45);
+    assert!(updated.advisor.enabled);
+    assert_eq!(updated.advisor.provider.model, "local-advisor");
+    assert_eq!(updated.verifiers.len(), 1);
+    let verifier = &updated.verifiers[0];
+    assert_eq!(verifier.id, "smoke");
+    assert_eq!(verifier.command, "cargo test --quiet");
+    assert_eq!(verifier.scope, VerificationScope::Full);
+    assert_eq!(verifier.timeout_secs, 900);
+    assert_eq!(
+        verifier.paths,
+        vec![
+            "src/lib.rs".to_string(),
+            "tests/entropy_control.rs".to_string()
+        ]
+    );
+    assert_eq!(
+        verifier.acceptance_patterns,
+        vec!["runtime_validation:native_gui".to_string()]
+    );
+}
+
+#[test]
+fn verifier_config_writer_rejects_empty_id_or_command() {
+    let temp = tempfile::tempdir().expect("temp dir");
+
+    let empty_id = coding_agent_monitor::write_verifier_config(
+        temp.path(),
+        coding_agent_monitor::VerifierConfig {
+            id: " ".into(),
+            command: "cargo test".into(),
+            scope: VerificationScope::Full,
+            timeout_secs: 300,
+            paths: vec![],
+            acceptance_patterns: vec![],
+        },
+    )
+    .expect_err("empty verifier id should fail");
+    assert!(empty_id.to_string().contains("verifier id"));
+
+    let empty_command = coding_agent_monitor::write_verifier_config(
+        temp.path(),
+        coding_agent_monitor::VerifierConfig {
+            id: "smoke".into(),
+            command: " ".into(),
+            scope: VerificationScope::Full,
+            timeout_secs: 300,
+            paths: vec![],
+            acceptance_patterns: vec![],
+        },
+    )
+    .expect_err("empty verifier command should fail");
+    assert!(empty_command.to_string().contains("verifier command"));
+}
+
+#[test]
+fn verifier_config_writer_tolerates_existing_invalid_advisor_profile() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let store = ProjectStore::open(temp.path()).expect("store");
+    std::fs::create_dir_all(store.root().join("credentials").join("coding-plan"))
+        .expect("credential dir");
+    std::fs::write(
+        store
+            .root()
+            .join("credentials")
+            .join("coding-plan")
+            .join("auth.json"),
+        r#"{"OPENAI_API_KEY":"eyJheader.payload.signature"}"#,
+    )
+    .expect("credential file");
+    std::fs::write(
+        store.root().join("config.json"),
+        r#"{
+          "advisor": {
+            "enabled": true,
+            "provider": {
+              "endpoint": "https://api.openai.com/v1/chat/completions",
+              "model": "gpt-5.5",
+              "credential_source": "coding_plan",
+              "credential_file": "credentials/coding-plan/auth.json"
+            }
+          }
+        }"#,
+    )
+    .expect("seed config");
+
+    let updated = coding_agent_monitor::write_verifier_config(
+        temp.path(),
+        coding_agent_monitor::VerifierConfig {
+            id: "self_test".into(),
+            command: "cargo test --quiet".into(),
+            scope: VerificationScope::Full,
+            timeout_secs: 900,
+            paths: vec!["src".into(), "tests".into()],
+            acceptance_patterns: vec![],
+        },
+    )
+    .expect("verifier registration should not validate unrelated advisor credentials");
+
+    assert_eq!(updated.verifiers.len(), 1);
+    assert_eq!(updated.verifiers[0].id, "self_test");
+    assert!(updated.advisor.enabled);
+    assert_eq!(
+        updated.advisor.provider.endpoint,
+        "https://api.openai.com/v1/chat/completions"
+    );
+}
+
+#[test]
 fn advisor_endpoint_config_writer_can_select_coding_plan_credentials() {
     let temp = tempfile::tempdir().expect("temp dir");
     std::fs::create_dir_all(
