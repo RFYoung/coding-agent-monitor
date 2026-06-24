@@ -2681,6 +2681,22 @@ pub fn build_control_case_file(
     build_control_case_file_with_config(workspace, snapshot, &ProjectConfig::default())
 }
 
+pub fn record_trace_entry(
+    workspace: impl AsRef<Path>,
+    mut entry: TraceEntry,
+) -> Result<TraceEntry, StoreError> {
+    if entry.time.is_none() {
+        entry.time = current_utc_timestamp();
+    }
+    if entry.agent.trim().is_empty() {
+        entry.agent = "monitor".into();
+    }
+    let entry = storage_redacted_trace(&entry);
+    let mut store = ProjectStore::open(workspace)?;
+    store.append_trace(&entry)?;
+    Ok(entry)
+}
+
 pub fn promote_memory_candidate(
     workspace: impl AsRef<Path>,
     memory_id: &str,

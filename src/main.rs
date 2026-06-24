@@ -4,16 +4,17 @@ use coding_agent_monitor::{
     AgentReviewAction, AgentReviewReport, BlameQuery, CalibrationQuery, Config, ControlActionKind,
     DashboardSnapshot, DevHistoryAnalysisOptions, DevHistoryRawExportOptions, Event, EventKind,
     InstallMode, Intervention, InterventionKind, LocalAgentConfigImportOptions, MemorySource,
-    ProjectConfig, ProjectStore, RepoHunkHistoryQuery, RequirementGraphQuery, WrappedCommand,
-    adapter_capabilities_for_config, adapter_hook_response, advise_workspace, agent_kind_label,
-    analyze_local_dev_history, create_demo_workspace, detect_running_agents_from_system,
-    export_raw_dev_history, handoff_workspace, import_coding_plan_advisor_credentials,
-    import_local_agent_configs, injection_plan_for_workspace, install_agent_injection,
-    judge_snapshot, load_blame_report, load_calibration_report, load_completion_certificate_report,
-    load_decision_trails, load_repo_hunk_history, load_requirement_graph, normalize_adapter_event,
+    ProjectConfig, ProjectStore, RepoHunkHistoryQuery, RequirementGraphQuery, TraceEntry,
+    WrappedCommand, adapter_capabilities_for_config, adapter_hook_response, advise_workspace,
+    agent_kind_label, analyze_local_dev_history, create_demo_workspace,
+    detect_running_agents_from_system, export_raw_dev_history, handoff_workspace,
+    import_coding_plan_advisor_credentials, import_local_agent_configs,
+    injection_plan_for_workspace, install_agent_injection, judge_snapshot, load_blame_report,
+    load_calibration_report, load_completion_certificate_report, load_decision_trails,
+    load_repo_hunk_history, load_requirement_graph, normalize_adapter_event,
     prepare_wrapped_launch, promote_memory_candidate, record_repo_audit_history,
-    run_adapter_jsonl_with_store, run_jsonl, run_jsonl_with_store, run_probe, run_verifier,
-    run_wrapped_command, write_advisor_endpoint_config,
+    record_trace_entry, run_adapter_jsonl_with_store, run_jsonl, run_jsonl_with_store, run_probe,
+    run_verifier, run_wrapped_command, write_advisor_endpoint_config,
 };
 use std::env;
 use std::io::Write;
@@ -484,6 +485,19 @@ fn main() -> ExitCode {
                 }
             }
         }
+        CliCommand::Trace { workspace, entry } => match record_trace_entry(&workspace, entry) {
+            Ok(entry) => {
+                if let Err(error) = serde_json::to_writer_pretty(std::io::stdout(), &entry) {
+                    eprintln!("encode trace entry: {error}");
+                    return ExitCode::from(1);
+                }
+                println!();
+            }
+            Err(error) => {
+                eprintln!("{error}");
+                return ExitCode::from(1);
+            }
+        },
         CliCommand::Handoff { workspace, agent } => match handoff_workspace(&workspace, agent) {
             Ok(handoff) => {
                 if let Err(error) = serde_json::to_writer_pretty(std::io::stdout(), &handoff) {
@@ -662,6 +676,10 @@ enum CliCommand {
         workspace: PathBuf,
         query: RequirementGraphQuery,
     },
+    Trace {
+        workspace: PathBuf,
+        entry: TraceEntry,
+    },
     Handoff {
         workspace: PathBuf,
         agent: AgentKind,
@@ -729,6 +747,8 @@ fn parse_cli(args: impl IntoIterator<Item = impl Into<String>>) -> Result<CliCom
         .is_some_and(|arg| arg == "completion-certificate")
     {
         parse_completion_certificate_args(args.into_iter().skip(1))
+    } else if args.first().is_some_and(|arg| arg == "trace") {
+        parse_trace_args(args.into_iter().skip(1))
     } else if args.first().is_some_and(|arg| arg == "handoff") {
         parse_handoff_args(args.into_iter().skip(1))
     } else if args.first().is_some_and(|arg| arg == "memory") {
@@ -1415,6 +1435,92 @@ fn parse_completion_certificate_args(
     let (workspace, query) = parse_requirement_query_args("completion-certificate", args)?;
 
     Ok(CliCommand::CompletionCertificate { workspace, query })
+}
+
+fn parse_trace_args(args: impl IntoIterator<Item = String>) -> Result<CliCommand, String> {
+    let mut workspace = PathBuf::from(".");
+    let mut entry = TraceEntry {
+        agent: "monitor".into(),
+        ..TraceEntry::default()
+    };
+
+    for arg in args {
+        if let Some(value) = arg.strip_prefix("--workspace=") {
+            workspace = PathBuf::from(value);
+        } else if let Some(value) = arg.strip_prefix("--time=") {
+            entry.time = Some(non_empty_arg("--time", value)?.to_string());
+        } else if let Some(value) = arg.strip_prefix("--event-id=") {
+            entry.event_id = Some(non_empty_arg("--event-id", value)?.to_string());
+        } else if let Some(value) = arg.strip_prefix("--agent=") {
+            entry.agent = non_empty_arg("--agent", value)?.to_string();
+        } else if let Some(value) = arg.strip_prefix("--provider=") {
+            entry.provider = Some(non_empty_arg("--provider", value)?.to_string());
+        } else if let Some(value) = arg.strip_prefix("--model=") {
+            entry.model = Some(non_empty_arg("--model", value)?.to_string());
+        } else if let Some(value) = arg.strip_prefix("--session=") {
+            entry.session = Some(non_empty_arg("--session", value)?.to_string());
+        } else if let Some(value) = arg.strip_prefix("--file=") {
+            entry.file = non_empty_arg("--file", value)?.to_string();
+        } else if let Some(value) = arg.strip_prefix("--line=") {
+            entry.line = Some(parse_positive_u32("--line", value)?);
+        } else if let Some(value) = arg.strip_prefix("--line-end=") {
+            entry.line_end = Some(parse_positive_u32("--line-end", value)?);
+        } else if let Some(value) = arg.strip_prefix("--rationale=") {
+            entry.rationale = Some(non_empty_arg("--rationale", value)?.to_string());
+        } else if let Some(value) = arg.strip_prefix("--related-event=") {
+            entry
+                .related_event_ids
+                .push(non_empty_arg("--related-event", value)?.to_string());
+        } else if let Some(value) = arg.strip_prefix("--requirement-id=") {
+            entry
+                .requirement_ids
+                .push(non_empty_arg("--requirement-id", value)?.to_string());
+        } else if let Some(value) = arg.strip_prefix("--requirement=") {
+            entry
+                .requirement_ids
+                .push(non_empty_arg("--requirement", value)?.to_string());
+        } else {
+            return Err(format!("unknown trace argument: {arg}"));
+        }
+    }
+
+    if entry.file.trim().is_empty() {
+        return Err("trace requires --file=<path>".into());
+    }
+    if entry
+        .rationale
+        .as_deref()
+        .is_none_or(|value| value.trim().is_empty())
+    {
+        return Err("trace requires --rationale=<reason>".into());
+    }
+    if let (Some(line), Some(line_end)) = (entry.line, entry.line_end)
+        && line_end < line
+    {
+        return Err("--line-end must be greater than or equal to --line".into());
+    }
+
+    Ok(CliCommand::Trace { workspace, entry })
+}
+
+fn non_empty_arg<'a>(name: &str, value: &'a str) -> Result<&'a str, String> {
+    let value = value.trim();
+    if value.is_empty() {
+        Err(format!("{name} must not be empty"))
+    } else {
+        Ok(value)
+    }
+}
+
+fn parse_positive_u32(name: &str, value: &str) -> Result<u32, String> {
+    let parsed = value
+        .parse()
+        .map_err(|_| format!("{name} must be a positive integer"))?;
+    if parsed == 0 {
+        Err(format!("{name} must be a positive integer"))
+    } else {
+        Ok(parsed)
+    }
 }
 
 fn parse_requirement_query_args(
@@ -2256,6 +2362,7 @@ mod tests {
             | CliCommand::RepoHunks { .. }
             | CliCommand::Requirements { .. }
             | CliCommand::CompletionCertificate { .. }
+            | CliCommand::Trace { .. }
             | CliCommand::Handoff { .. }
             | CliCommand::MemoryPromote { .. }
             | CliCommand::RepoAudit { .. }
@@ -2311,6 +2418,7 @@ mod tests {
             | CliCommand::RepoHunks { .. }
             | CliCommand::Requirements { .. }
             | CliCommand::CompletionCertificate { .. }
+            | CliCommand::Trace { .. }
             | CliCommand::Handoff { .. }
             | CliCommand::MemoryPromote { .. }
             | CliCommand::RepoAudit { .. }
@@ -2547,6 +2655,54 @@ mod tests {
             }
             _ => panic!("expected advise command"),
         }
+    }
+
+    #[test]
+    fn parses_trace_command_with_requirement_binding() {
+        let command = parse_cli([
+            "trace",
+            "--workspace=E:/demo",
+            "--agent=codex",
+            "--session=s1",
+            "--event-id=evt-trace-proof",
+            "--file=src/lib.rs",
+            "--line=10",
+            "--line-end=18",
+            "--rationale=Implement project-contract proof mapping.",
+            "--related-event=evt-user-goal",
+            "--requirement-id=req-contract-every-meaningful-change",
+        ])
+        .expect("parse trace command");
+
+        match command {
+            CliCommand::Trace { workspace, entry } => {
+                assert_eq!(workspace, PathBuf::from("E:/demo"));
+                assert_eq!(entry.agent, "codex");
+                assert_eq!(entry.session.as_deref(), Some("s1"));
+                assert_eq!(entry.event_id.as_deref(), Some("evt-trace-proof"));
+                assert_eq!(entry.file, "src/lib.rs");
+                assert_eq!(entry.line, Some(10));
+                assert_eq!(entry.line_end, Some(18));
+                assert_eq!(
+                    entry.rationale.as_deref(),
+                    Some("Implement project-contract proof mapping.")
+                );
+                assert_eq!(entry.related_event_ids, vec!["evt-user-goal".to_string()]);
+                assert_eq!(
+                    entry.requirement_ids,
+                    vec!["req-contract-every-meaningful-change".to_string()]
+                );
+            }
+            _ => panic!("expected trace command"),
+        }
+    }
+
+    #[test]
+    fn trace_command_requires_rationale() {
+        let error = parse_cli(["trace", "--file=src/lib.rs"])
+            .expect_err("trace command should require rationale");
+
+        assert!(error.contains("trace requires --rationale"));
     }
 
     #[test]

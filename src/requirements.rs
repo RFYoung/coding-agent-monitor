@@ -550,7 +550,7 @@ fn requirement_proof_step(
     outcomes: &[ActionOutcome],
 ) -> RequirementProofStep {
     let trace_refs = trace_refs_for_requirement(requirement, traces);
-    let repo_hunks = repo_hunk_refs_for_requirement(requirement, repo_hunks);
+    let repo_hunks = repo_hunk_refs_for_requirement(requirement, repo_hunks, &trace_refs);
     let control_refs = control_refs_for_requirement(requirement, &case_file.case_file_id, advice);
     let outcome_refs = outcome_refs_for_requirement(requirement, &control_refs, outcomes);
     let proof_strength = requirement_proof_strength(
@@ -877,9 +877,10 @@ fn non_empty_option(value: &str) -> Option<String> {
 fn repo_hunk_refs_for_requirement(
     requirement: &RequirementNode,
     repo_hunks: &[RepoHunkHistoryEntry],
+    trace_refs: &[RequirementTraceProofRef],
 ) -> Vec<RequirementRepoHunkProofRef> {
     let evidence = requirement_evidence_profile(requirement);
-    if evidence.all.is_empty() {
+    if evidence.all.is_empty() && trace_refs.is_empty() {
         return Vec::new();
     }
 
@@ -889,7 +890,10 @@ fn repo_hunk_refs_for_requirement(
         let mut related_event_ids = Vec::new();
         let mut hunk_necessity = None;
         for trace_ref in &hunk.matching_trace_refs {
-            let Some(necessity) = trace_ref_match_necessity(trace_ref, &evidence) else {
+            let Some(necessity) = merge_optional_necessity(
+                trace_ref_match_necessity(trace_ref, &evidence),
+                trace_ref_match_requirement_trace_necessity(trace_ref, trace_refs),
+            ) else {
                 continue;
             };
             hunk_necessity = Some(
@@ -926,6 +930,27 @@ fn repo_hunk_refs_for_requirement(
     }
 
     refs
+}
+
+fn trace_ref_match_requirement_trace_necessity(
+    trace_ref: &crate::RepoHunkTraceRef,
+    trace_refs: &[RequirementTraceProofRef],
+) -> Option<RequirementEvidenceNecessity> {
+    let mut matched = None;
+    for requirement_trace in trace_refs {
+        let Some(event_id) = requirement_trace.event_id.as_deref() else {
+            continue;
+        };
+        let event_matches = trace_ref.event_id.as_deref() == Some(event_id)
+            || trace_ref
+                .related_event_ids
+                .iter()
+                .any(|related| related == event_id);
+        if event_matches {
+            matched = merge_optional_necessity(matched, Some(requirement_trace.necessity));
+        }
+    }
+    matched
 }
 
 #[derive(Debug, Clone, Default)]

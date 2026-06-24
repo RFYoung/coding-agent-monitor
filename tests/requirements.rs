@@ -5,7 +5,7 @@ use coding_agent_monitor::{
     ProjectStore, RepoChangeKind, RepoHunkHistoryEntry, RepoHunkTraceRef, RepoTraceStatus,
     RequirementEvidenceNecessity, RequirementGraphQuery, RequirementNode, RequirementSource,
     TraceEntry, ValidationOutcome, VerificationStatus, build_control_case_file,
-    load_completion_certificate_report, load_requirement_graph,
+    load_completion_certificate_report, load_requirement_graph, record_trace_entry,
 };
 use std::path::Path;
 
@@ -536,6 +536,147 @@ fn requirements_query_treats_trace_requirement_id_as_necessary_proof() {
             .proof_strength
             .signals
             .contains(&"direct_trace_rationale".into())
+    );
+}
+
+#[test]
+fn record_trace_entry_links_requirement_id_to_necessary_proof() {
+    let temp = tempfile::tempdir().expect("workspace");
+    let mut store = ProjectStore::open(temp.path()).expect("store");
+    append_case_file(
+        &mut store,
+        temp.path(),
+        "case-with-recorded-trace",
+        vec![requirement(
+            "req-contract-every-meaningful-change",
+            "Every meaningful change needs trace rationale.",
+            AcceptanceCoverageStatus::Unverified,
+        )],
+    );
+
+    record_trace_entry(
+        temp.path(),
+        TraceEntry {
+            event_id: Some("evt-recorded-trace".into()),
+            agent: "monitor".into(),
+            file: "src/lib.rs".into(),
+            rationale: Some("Record rationale for the project-contract requirement.".into()),
+            requirement_ids: vec!["req-contract-every-meaningful-change".into()],
+            ..TraceEntry::default()
+        },
+    )
+    .expect("record trace");
+
+    let report = load_requirement_graph(
+        temp.path(),
+        RequirementGraphQuery {
+            requirement_id: Some("req-contract-every-meaningful-change".into()),
+            limit: 10,
+            ..RequirementGraphQuery::default()
+        },
+    )
+    .expect("requirements report");
+
+    assert_eq!(report.proofs.len(), 1);
+    assert_eq!(report.proofs[0].trace_refs.len(), 1);
+    assert_eq!(
+        report.proofs[0].trace_refs[0].necessity,
+        RequirementEvidenceNecessity::Necessary
+    );
+    assert!(
+        report.proofs[0]
+            .proof_strength
+            .signals
+            .contains(&"direct_trace_rationale".into()),
+        "{:?}",
+        report.proofs[0].proof_strength
+    );
+}
+
+#[test]
+fn requirement_id_trace_links_matching_repo_hunk_as_necessary_proof() {
+    let temp = tempfile::tempdir().expect("workspace");
+    let mut store = ProjectStore::open(temp.path()).expect("store");
+    store
+        .append_trace(&TraceEntry {
+            event_id: Some("evt-contract-trace".into()),
+            agent: "codex".into(),
+            file: "src/lib.rs".into(),
+            line: Some(10),
+            line_end: Some(20),
+            rationale: Some("Implement the trace-rationale contract.".into()),
+            requirement_ids: vec!["req-contract-trace-rationale".into()],
+            ..TraceEntry::default()
+        })
+        .expect("trace");
+    store
+        .append_repo_hunk_history(&RepoHunkHistoryEntry {
+            history_id: "hunk-contract-trace".into(),
+            observed_at: "2026-06-24T15:10:00Z".into(),
+            workspace: temp.path().display().to_string(),
+            path: "src/lib.rs".into(),
+            kind: RepoChangeKind::Modified,
+            hunk_index: 0,
+            old_start: 10,
+            old_lines: 2,
+            new_start: 10,
+            new_lines: 3,
+            trace_status: RepoTraceStatus::Traced,
+            matching_trace_count: 1,
+            change_trace_status: RepoTraceStatus::Traced,
+            modified_at: None,
+            matching_trace_refs: vec![RepoHunkTraceRef {
+                event_id: Some("evt-contract-trace".into()),
+                agent: Some("codex".into()),
+                session: None,
+                line: Some(10),
+                line_end: Some(20),
+                rationale: Some("Implement the trace-rationale contract.".into()),
+                related_event_ids: Vec::new(),
+            }],
+        })
+        .expect("repo hunk history");
+    append_case_file(
+        &mut store,
+        temp.path(),
+        "case-with-requirement-id-hunk",
+        vec![requirement(
+            "req-contract-trace-rationale",
+            "Every meaningful change needs trace rationale.",
+            AcceptanceCoverageStatus::Unverified,
+        )],
+    );
+
+    let report = load_requirement_graph(
+        temp.path(),
+        RequirementGraphQuery {
+            requirement_id: Some("req-contract-trace-rationale".into()),
+            limit: 10,
+            ..RequirementGraphQuery::default()
+        },
+    )
+    .expect("requirements report");
+
+    assert_eq!(report.proofs[0].repo_hunks.len(), 1);
+    assert_eq!(
+        report.proofs[0].repo_hunks[0].necessity,
+        RequirementEvidenceNecessity::Necessary
+    );
+    assert!(
+        report.proofs[0]
+            .proof_strength
+            .signals
+            .contains(&"repo_hunk_traced".into()),
+        "{:?}",
+        report.proofs[0].proof_strength
+    );
+    assert!(
+        !report.proofs[0]
+            .proof_strength
+            .gaps
+            .contains(&"no_repo_hunk_refs".into()),
+        "{:?}",
+        report.proofs[0].proof_strength
     );
 }
 
