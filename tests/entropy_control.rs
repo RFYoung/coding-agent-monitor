@@ -6,14 +6,14 @@ use coding_agent_monitor::{
     DispatchStatus, EntropyDelta, EntropyKind, EntropyTrend, Event, EventKind, MemorySource,
     OutcomeStatus, PacketInstruction, PacketInstructionPriority, PacketPreconditions,
     PacketUrgency, ProbeSpec, ProjectConfig, ProjectStore, RedactionStatus, RepoAuditStatus,
-    RepoChangeKind, RepoHunkHistoryEntry, RepoTraceStatus, RequirementSource,
-    RuntimeValidationSurface, TraceEntry, ValidationOutcome, VerificationFailureClass,
-    VerificationRunStatus, VerificationScope, VerificationSuite, VerifierRun, WorktreeLock,
-    WorktreeLockRequest, WorktreeLockResult, adapter_capabilities_for,
+    RepoChangeKind, RepoHunkHistoryEntry, RepoTraceStatus, RequirementGraphQuery,
+    RequirementSource, RuntimeValidationSurface, TraceEntry, ValidationOutcome,
+    VerificationFailureClass, VerificationRunStatus, VerificationScope, VerificationSuite,
+    VerifierRun, WorktreeLock, WorktreeLockRequest, WorktreeLockResult, adapter_capabilities_for,
     adapter_capabilities_for_config, advise_workspace, build_control_case_file,
-    build_control_case_file_with_config, load_decision_trails, promote_memory_candidate,
-    run_jsonl_with_store, run_probe, run_verifier, validate_advisor_decision,
-    validate_control_action, validate_control_action_detailed,
+    build_control_case_file_with_config, load_decision_trails, load_requirement_graph,
+    promote_memory_candidate, run_jsonl_with_store, run_probe, run_verifier,
+    validate_advisor_decision, validate_control_action, validate_control_action_detailed,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -12645,6 +12645,110 @@ fn run_verifier_records_successful_outcome_for_latest_force_verification_advice(
             .observed_entropy_delta
             .iter()
             .any(|delta| delta.kind == EntropyKind::Verification && delta.delta < 0)
+    );
+}
+
+#[test]
+fn force_verification_links_project_contract_requirement_to_control_and_outcome_proof() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    std::fs::write(
+        temp.path().join("AGENTS.md"),
+        "# Project\n\n## Non-Negotiable Invariants\n\n- Do not continue after source/test changes when relevant verification is stale, unless the change is docs-only and policy allows it.\n",
+    )
+    .expect("AGENTS.md");
+    let mut store = ProjectStore::open(temp.path()).expect("store");
+    std::fs::write(
+        store.root().join("config.json"),
+        json!({
+            "verifiers": [
+                {
+                    "id": "smoke",
+                    "command": passing_verifier_command(),
+                    "scope": "targeted",
+                    "timeout_secs": 5,
+                    "paths": ["src/lib.rs"]
+                }
+            ]
+        })
+        .to_string(),
+    )
+    .expect("config");
+    store
+        .append_event(&Event {
+            time: Some("2026-06-22T12:01:00Z".into()),
+            event_id: Some("evt-source-write".into()),
+            agent: "codex".into(),
+            kind: EventKind::FileChange,
+            file: Some("src/lib.rs".into()),
+            rationale: Some("Change production code.".into()),
+            ..Event::default()
+        })
+        .expect("event");
+
+    let advice = advise_workspace(temp.path()).expect("advice");
+    let requirement_id = "req-contract-do-not-continue-after-source-test-changes-when-relevant-verification-is-stale--unless-the-change-is-docs-only-and-policy-allows-it";
+
+    assert_eq!(
+        advice.final_action,
+        ControlAction::ForceVerification {
+            suite: VerificationSuite::Targeted,
+            blocking: true,
+        }
+    );
+    assert!(
+        advice
+            .control_rationale
+            .requirement_ids
+            .contains(&requirement_id.to_string()),
+        "{:?}",
+        advice.control_rationale
+    );
+
+    let run = run_verifier(temp.path(), "smoke").expect("verifier");
+    assert_eq!(run.status, VerificationRunStatus::Passed);
+
+    let report = load_requirement_graph(
+        temp.path(),
+        RequirementGraphQuery {
+            requirement_id: Some(requirement_id.into()),
+            limit: 10,
+            ..RequirementGraphQuery::default()
+        },
+    )
+    .expect("requirements report");
+
+    assert_eq!(report.proofs.len(), 1);
+    assert_eq!(
+        report.proofs[0].control_refs[0].requirement_ids,
+        vec![requirement_id.to_string()]
+    );
+    assert_eq!(
+        report.proofs[0].control_refs[0].necessity,
+        coding_agent_monitor::RequirementEvidenceNecessity::Necessary
+    );
+    assert_eq!(
+        report.proofs[0].outcome_refs[0].requirement_ids,
+        vec![requirement_id.to_string()]
+    );
+    assert_eq!(
+        report.proofs[0].outcome_refs[0].status,
+        OutcomeStatus::Succeeded
+    );
+    assert!(
+        report.proofs[0]
+            .proof_strength
+            .signals
+            .contains(&"monitor_control_decision".into()),
+        "{:?}",
+        report.proofs[0].proof_strength
+    );
+    assert!(
+        report.proofs[0]
+            .proof_strength
+            .signals
+            .contains(&"successful_outcome".into()),
+        "{:?}",
+        report.proofs[0].proof_strength
     );
 }
 

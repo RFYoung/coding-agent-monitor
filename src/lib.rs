@@ -8503,8 +8503,52 @@ fn control_rationale_for_action(
         reason,
         expected_entropy_delta,
         evidence_ids,
-        requirement_ids: Vec::new(),
+        requirement_ids: requirement_ids_for_control_rationale(final_action, case_file, dominant),
     }
+}
+
+fn requirement_ids_for_control_rationale(
+    final_action: &ControlAction,
+    case_file: &ControlCaseFile,
+    dominant: Option<EntropyKind>,
+) -> Vec<String> {
+    let mut requirement_ids = Vec::new();
+    for requirement in &case_file.requirements {
+        if requirement.source != RequirementSource::ProjectContract {
+            continue;
+        }
+        if action_enforces_project_contract_requirement(
+            final_action,
+            case_file,
+            dominant,
+            requirement,
+        ) {
+            push_unique_string(&mut requirement_ids, &requirement.requirement_id);
+        }
+    }
+    requirement_ids
+}
+
+fn action_enforces_project_contract_requirement(
+    final_action: &ControlAction,
+    case_file: &ControlCaseFile,
+    dominant: Option<EntropyKind>,
+    requirement: &RequirementNode,
+) -> bool {
+    let text = requirement.text.to_ascii_lowercase();
+    match final_action {
+        ControlAction::ForceVerification { .. } => {
+            project_contract_is_stale_verification_invariant(&text)
+                && (dominant == Some(EntropyKind::Verification)
+                    || case_file.verification.status != VerificationStatus::Passed)
+        }
+        _ => false,
+    }
+}
+
+fn project_contract_is_stale_verification_invariant(text: &str) -> bool {
+    text.contains("do not continue after source/test changes")
+        && text.contains("verification is stale")
 }
 
 fn dominant_entropy(case_file: &ControlCaseFile) -> Option<EntropyKind> {
