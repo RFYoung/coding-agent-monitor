@@ -246,17 +246,5 @@ fn redact_slack_tokens(input: &str) -> String {
 }
 
 #[cfg(test)]
-mod redaction_tests {
-    use super::*;
-
-    #[test]
-    fn clean_sanitization_preserves_structured_whitespace() {
-        let input =
-            "Build the monitor supervisor.\nAcceptance criteria:\n- parser handles nested calls";
-
-        let (sanitized, status) = sanitize_evidence_summary(input);
-
-        assert_eq!(status, RedactionStatus::Clean);
-        assert_eq!(sanitized, input);
-    }
-}
+#[path = "redaction_tests.rs"]
+mod redaction_tests;

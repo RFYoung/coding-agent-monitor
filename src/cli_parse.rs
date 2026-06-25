@@ -1,6 +1,10 @@
 //! Command-line argument parsing for the `agent-monitor` binary: turns raw
 //! `argv` into a validated `CliCommand`. Pure parsing and validation, no I/O.
 
+use crate::cli_support::{
+    default_coding_plan_credential_source, default_home_dir, reject_local_cli_auth_source,
+};
+use crate::hook_response::HookResponseFormat;
 use crate::*;
 
 pub(crate) fn parse_cli(
@@ -1234,3 +1238,7 @@ pub(crate) fn parse_api_key_env_name(value: &str) -> Result<String, String> {
     }
     Ok(value.to_string())
 }
+
+#[cfg(test)]
+#[path = "cli_parse_tests.rs"]
+mod tests;

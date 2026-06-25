@@ -2075,22 +2075,8 @@ fn inline_dispatch_for_advice(advice: &AdviceRun, packet: &ControlPacket) -> Dis
 }
 
 #[cfg(test)]
-mod acceptance_extraction_tests {
-    use super::*;
-
-    #[test]
-    fn extracts_acceptance_block_after_goal_sentence() {
-        assert_eq!(
-            extract_acceptance_criteria(
-                "Build the monitor supervisor.\nAcceptance criteria:\n- parser handles nested calls\n- advisor packets cite evidence",
-            ),
-            vec![
-                "parser handles nested calls".to_string(),
-                "advisor packets cite evidence".to_string()
-            ]
-        );
-    }
-}
+#[path = "acceptance_extraction_tests.rs"]
+mod acceptance_extraction_tests;
 
 fn latest_verification_status(
     snapshot: &DashboardSnapshot,
@@ -2329,58 +2315,5 @@ fn verifier_run_time(run: &VerifierRun) -> Option<i64> {
 }
 
 #[cfg(test)]
-mod console_decode_tests {
-    use super::{AdvisorClientError, current_id_fragment, decode_console_line, post_json_http};
-    use std::collections::HashSet;
-
-    #[test]
-    fn valid_utf8_is_passed_through_unchanged() {
-        assert_eq!(
-            decode_console_line("版本 build ok".as_bytes()),
-            "版本 build ok"
-        );
-    }
-
-    #[test]
-    fn empty_input_decodes_to_empty_string() {
-        assert_eq!(decode_console_line(&[]), "");
-    }
-
-    #[test]
-    fn invalid_utf8_does_not_panic_and_yields_text() {
-        // 0x80 is not valid standalone UTF-8; decoding must fall back gracefully
-        // (OEM code page on Windows, lossy elsewhere) without crashing.
-        let decoded = decode_console_line(&[b'o', b'k', 0x80]);
-        assert!(decoded.starts_with("ok"));
-    }
-
-    #[test]
-    fn https_advisor_endpoint_is_not_rejected_before_transport() {
-        let error = post_json_http(
-            "https://127.0.0.1:9/v1/chat/completions",
-            "test-key",
-            "{}",
-            1,
-        )
-        .expect_err("unreachable local endpoint should fail");
-
-        assert!(!matches!(error, AdvisorClientError::InvalidEndpoint(_)));
-        assert!(!error.to_string().contains("https transport"));
-    }
-
-    #[test]
-    fn generated_id_fragments_are_unique_inside_one_millisecond_window() {
-        let ids = (0..100)
-            .map(|_| current_id_fragment())
-            .collect::<HashSet<_>>();
-
-        assert_eq!(ids.len(), 100);
-    }
-
-    #[test]
-    fn generated_id_fragments_include_process_id() {
-        let id = current_id_fragment();
-
-        assert!(id.contains(&std::process::id().to_string()));
-    }
-}
+#[path = "console_decode_tests.rs"]
+mod console_decode_tests;
