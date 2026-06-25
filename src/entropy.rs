@@ -9,6 +9,7 @@ pub(crate) struct EntropyScoringInput<'a> {
     pub(crate) verification: &'a VerificationSummary,
     pub(crate) durable_memory: &'a [MemoryCandidate],
     pub(crate) repo_audit: Option<&'a RepoAuditReport>,
+    pub(crate) validation_profile: &'a ProjectValidationProfile,
     pub(crate) policy: &'a PolicyConfig,
     pub(crate) security: &'a SecurityConfig,
 }
@@ -21,6 +22,7 @@ pub(crate) fn score_entropy(input: EntropyScoringInput<'_>) -> EntropyVector {
         verification,
         durable_memory,
         repo_audit,
+        validation_profile,
         policy,
         security,
     } = input;
@@ -153,13 +155,19 @@ pub(crate) fn score_entropy(input: EntropyScoringInput<'_>) -> EntropyVector {
                 }
                 if policy.require_verification_after_source_change
                     && let Some(file) = event.file.as_deref()
-                    && let Some(surface) = validation_surface_for_path(file)
+                    && let Some(surface_evidence) =
+                        validation_profile.validation_surface_evidence_for_path(file)
+                    && surface_evidence.can_require_runtime_validation()
                     && latest_domain_validation_write
                         .as_ref()
                         .is_none_or(|(current, _, _, _)| order > *current)
                 {
-                    latest_domain_validation_write =
-                        Some((order, evidence_id.clone(), file.to_string(), surface));
+                    latest_domain_validation_write = Some((
+                        order,
+                        evidence_id.clone(),
+                        file.to_string(),
+                        surface_evidence.surface,
+                    ));
                 }
             }
             if event

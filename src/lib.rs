@@ -151,8 +151,8 @@ pub use requirements::{
 pub use store::*;
 pub(crate) use util::*;
 use validation_surface::{
-    ValidationSurface, is_ui_validation_relevant_file, ordered_validation_surfaces,
-    push_validation_surface, validation_surface_for_path, validation_surfaces_for_command,
+    ProjectValidationProfile, ValidationSurface, is_ui_validation_relevant_file,
+    ordered_validation_surfaces, push_validation_surface, validation_surfaces_for_command,
     validation_surfaces_for_event,
 };
 pub use verifier::run_verifier;
@@ -305,6 +305,7 @@ pub fn build_control_case_file_with_config(
         repo_audit.as_ref(),
     );
     let task = task_summary_from_intent_events(&intent_events, &verification);
+    let validation_profile = ProjectValidationProfile::discover(workspace, &config.verifiers);
     let entropy = score_entropy(EntropyScoringInput {
         snapshot,
         intent_events: &intent_events,
@@ -312,6 +313,7 @@ pub fn build_control_case_file_with_config(
         verification: &verification,
         durable_memory: &durable_memory_load.memories,
         repo_audit: repo_audit.as_ref(),
+        validation_profile: &validation_profile,
         policy: &config.policy,
         security: &config.security,
     });

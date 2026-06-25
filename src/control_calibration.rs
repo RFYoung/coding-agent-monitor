@@ -1978,15 +1978,6 @@ pub(crate) fn intended_environment_validation_surfaces(
     case_file: &ControlCaseFile,
 ) -> Vec<ValidationSurface> {
     let mut surfaces = Vec::new();
-    for file in &case_file.verification.changed_source_files {
-        if let Some(surface) = validation_surface_for_path(file) {
-            push_validation_surface(&mut surfaces, surface);
-        }
-    }
-    if !surfaces.is_empty() {
-        return surfaces;
-    }
-
     if let Some(score) = case_file.entropy.score(EntropyKind::Verification) {
         for surface in ordered_validation_surfaces() {
             if score.top_causes.iter().any(|cause| {

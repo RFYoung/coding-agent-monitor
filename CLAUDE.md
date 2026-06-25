@@ -60,6 +60,12 @@ Verification and validation are different. A build or unit test can prove confor
 - System component: service, daemon, container, healthcheck, or integration validation.
 - ML system: model eval, benchmark, golden dataset, inference smoke, or dataset check evidence.
 
+Runtime-surface detection must be low-setup but evidence-tiered. Auto-discover
+project markers and verifier mappings first; treat path names, broad command
+words, and transcript keywords as weak hints only. A weak hint may request a
+probe, but it must not by itself force high-cost actions, user interrupts, or
+intended-environment validation obligations.
+
 ## Control Actions
 
 Use a small explicit action set:
@@ -130,6 +136,11 @@ Current best MVP path:
 6. Memory governance, requirement proof, repo blame, dashboard, calibration.
 
 High-cost controls such as switching or fresh spawning come after stale-verification detection, bounded packets, and loop detection are reliable.
+
+Classifier work should prefer structured evidence over keyword matching:
+explicit verifier config, project manifests, observed verifier results, and
+adapter event fields outrank dev-history priors and text/path hints. Unknown is
+a valid result; do not coerce weak signals into precise classifications.
 
 ## Current Working Commands
 

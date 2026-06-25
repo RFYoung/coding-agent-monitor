@@ -34,3 +34,30 @@ fn surface_qualified_runtime_commands_map_to_specific_surfaces() {
         vec![ValidationSurface::WebUi]
     );
 }
+
+#[test]
+fn path_only_surface_matches_are_weak_hints() {
+    let evidence = validation_surface_evidence_for_path("frontend/components/App.tsx")
+        .expect("web UI path hint");
+
+    assert_eq!(evidence.surface, ValidationSurface::WebUi);
+    assert_eq!(evidence.confidence, ValidationEvidenceConfidence::TextHint);
+    assert!(!evidence.can_require_runtime_validation());
+}
+
+#[test]
+fn project_profile_promotes_surface_matches_to_structural_evidence() {
+    let mut profile = ProjectValidationProfile::default();
+    profile.add_structural_surface(ValidationSurface::WebUi, "playwright.config.ts");
+
+    let evidence = profile
+        .validation_surface_evidence_for_path("frontend/components/App.tsx")
+        .expect("web UI evidence");
+
+    assert_eq!(evidence.surface, ValidationSurface::WebUi);
+    assert_eq!(
+        evidence.confidence,
+        ValidationEvidenceConfidence::Structural
+    );
+    assert!(evidence.can_require_runtime_validation());
+}

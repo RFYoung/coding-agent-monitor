@@ -1,4 +1,5 @@
-use crate::{Event, normalize_command_signature};
+use crate::{Event, VerifierConfig, normalize_command_signature};
+use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum ValidationSurface {
@@ -7,6 +8,121 @@ pub(crate) enum ValidationSurface {
     NativeGui,
     SystemComponent,
     MlSystem,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum ValidationEvidenceConfidence {
+    TextHint,
+    Observed,
+    Structural,
+    Explicit,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ValidationSurfaceEvidence {
+    pub(crate) surface: ValidationSurface,
+    pub(crate) confidence: ValidationEvidenceConfidence,
+    pub(crate) source: String,
+}
+
+impl ValidationSurfaceEvidence {
+    pub(crate) fn can_require_runtime_validation(&self) -> bool {
+        matches!(
+            self.confidence,
+            ValidationEvidenceConfidence::Observed
+                | ValidationEvidenceConfidence::Structural
+                | ValidationEvidenceConfidence::Explicit
+        )
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct ProjectValidationProfile {
+    surface_evidence: Vec<ValidationSurfaceEvidence>,
+}
+
+impl ProjectValidationProfile {
+    /// Discover project-level evidence that upgrades path/name matches from
+    /// weak hints into trusted runtime-surface obligations.
+    pub(crate) fn discover(workspace: &Path, verifiers: &[VerifierConfig]) -> Self {
+        let mut profile = Self::default();
+        profile.add_explicit_verifier_surfaces(verifiers);
+        profile.add_structural_surfaces_from_workspace(workspace);
+        profile
+    }
+
+    pub(crate) fn add_structural_surface(&mut self, surface: ValidationSurface, source: &str) {
+        self.push_surface_evidence(ValidationSurfaceEvidence {
+            surface,
+            confidence: ValidationEvidenceConfidence::Structural,
+            source: source.into(),
+        });
+    }
+
+    pub(crate) fn validation_surface_evidence_for_path(
+        &self,
+        path: &str,
+    ) -> Option<ValidationSurfaceEvidence> {
+        let mut evidence = validation_surface_evidence_for_path(path)?;
+        if let Some(stronger) = self.strongest_surface_evidence(evidence.surface) {
+            evidence.confidence = stronger.confidence;
+            evidence.source = stronger.source.clone();
+        }
+        Some(evidence)
+    }
+
+    fn add_explicit_verifier_surfaces(&mut self, verifiers: &[VerifierConfig]) {
+        for verifier in verifiers {
+            for pattern in &verifier.acceptance_patterns {
+                if let Some(surface) = runtime_validation_surface_from_marker(pattern) {
+                    self.push_surface_evidence(ValidationSurfaceEvidence {
+                        surface,
+                        confidence: ValidationEvidenceConfidence::Explicit,
+                        source: format!("verifier `{}` acceptance pattern", verifier.id),
+                    });
+                }
+            }
+            for surface in validation_surfaces_for_command(&verifier.command) {
+                self.push_surface_evidence(ValidationSurfaceEvidence {
+                    surface,
+                    confidence: ValidationEvidenceConfidence::Observed,
+                    source: format!("verifier `{}` command", verifier.id),
+                });
+            }
+        }
+    }
+
+    fn add_structural_surfaces_from_workspace(&mut self, workspace: &Path) {
+        for (surface, candidates) in structural_surface_markers() {
+            for candidate in candidates {
+                if workspace.join(candidate).exists() {
+                    self.add_structural_surface(surface, candidate);
+                    break;
+                }
+            }
+        }
+    }
+
+    fn strongest_surface_evidence(
+        &self,
+        surface: ValidationSurface,
+    ) -> Option<&ValidationSurfaceEvidence> {
+        self.surface_evidence
+            .iter()
+            .filter(|evidence| evidence.surface == surface)
+            .max_by_key(|evidence| evidence.confidence)
+    }
+
+    fn push_surface_evidence(&mut self, evidence: ValidationSurfaceEvidence) {
+        if self
+            .strongest_surface_evidence(evidence.surface)
+            .is_none_or(|existing| existing.confidence < evidence.confidence)
+        {
+            self.surface_evidence
+                .retain(|existing| existing.surface != evidence.surface);
+            self.surface_evidence.push(evidence);
+        }
+    }
 }
 
 impl ValidationSurface {
@@ -64,6 +180,12 @@ pub(crate) fn is_ui_validation_relevant_file(path: &str) -> bool {
 }
 
 pub(crate) fn validation_surface_for_path(path: &str) -> Option<ValidationSurface> {
+    validation_surface_evidence_for_path(path).map(|evidence| evidence.surface)
+}
+
+pub(crate) fn validation_surface_evidence_for_path(
+    path: &str,
+) -> Option<ValidationSurfaceEvidence> {
     let lower = path.replace('\\', "/").to_lowercase();
     let file_name = lower.rsplit('/').next().unwrap_or(lower.as_str());
 
@@ -81,7 +203,7 @@ pub(crate) fn validation_surface_for_path(path: &str) -> Option<ValidationSurfac
             .iter()
             .any(|extension| file_name.ends_with(extension))
     {
-        return Some(ValidationSurface::MobileApp);
+        return Some(path_hint_evidence(ValidationSurface::MobileApp));
     }
 
     if lower.starts_with("ml/")
@@ -98,7 +220,7 @@ pub(crate) fn validation_surface_for_path(path: &str) -> Option<ValidationSurfac
         || lower.contains("/evals/")
         || file_name.ends_with(".ipynb")
     {
-        return Some(ValidationSurface::MlSystem);
+        return Some(path_hint_evidence(ValidationSurface::MlSystem));
     }
 
     if lower.starts_with("system/")
@@ -112,7 +234,7 @@ pub(crate) fn validation_surface_for_path(path: &str) -> Option<ValidationSurfac
         || lower.contains("/installer/")
         || file_name.ends_with(".service")
     {
-        return Some(ValidationSurface::SystemComponent);
+        return Some(path_hint_evidence(ValidationSurface::SystemComponent));
     }
 
     if lower.starts_with("desktop/")
@@ -128,7 +250,7 @@ pub(crate) fn validation_surface_for_path(path: &str) -> Option<ValidationSurfac
         || lower.contains("/src-tauri/")
         || lower.contains("/wails/")
     {
-        return Some(ValidationSurface::NativeGui);
+        return Some(path_hint_evidence(ValidationSurface::NativeGui));
     }
 
     if lower.starts_with("frontend/")
@@ -144,10 +266,79 @@ pub(crate) fn validation_surface_for_path(path: &str) -> Option<ValidationSurfac
             .iter()
             .any(|extension| file_name.ends_with(extension))
     {
-        return Some(ValidationSurface::WebUi);
+        return Some(path_hint_evidence(ValidationSurface::WebUi));
     }
 
     None
+}
+
+fn path_hint_evidence(surface: ValidationSurface) -> ValidationSurfaceEvidence {
+    ValidationSurfaceEvidence {
+        surface,
+        confidence: ValidationEvidenceConfidence::TextHint,
+        source: "path/name hint".into(),
+    }
+}
+
+fn runtime_validation_surface_from_marker(pattern: &str) -> Option<ValidationSurface> {
+    let marker = pattern.trim().to_ascii_lowercase();
+    let kind = marker.strip_prefix("runtime_validation:")?;
+    match kind {
+        "web_ui" => Some(ValidationSurface::WebUi),
+        "mobile_app" => Some(ValidationSurface::MobileApp),
+        "native_gui" => Some(ValidationSurface::NativeGui),
+        "system_component" => Some(ValidationSurface::SystemComponent),
+        "ml_system" => Some(ValidationSurface::MlSystem),
+        _ => None,
+    }
+}
+
+fn structural_surface_markers() -> [(ValidationSurface, &'static [&'static str]); 5] {
+    [
+        (
+            ValidationSurface::WebUi,
+            &[
+                "playwright.config.ts",
+                "playwright.config.js",
+                "playwright.config.mjs",
+                "playwright.config.cjs",
+                "cypress.config.ts",
+                "cypress.config.js",
+                "vite.config.ts",
+                "vite.config.js",
+                "next.config.js",
+                "next.config.mjs",
+            ],
+        ),
+        (
+            ValidationSurface::MobileApp,
+            &[
+                "android/build.gradle",
+                "android/app/build.gradle",
+                "android/settings.gradle",
+                "ios/Podfile",
+                "ios/Runner.xcodeproj",
+            ],
+        ),
+        (
+            ValidationSurface::NativeGui,
+            &["src-tauri/tauri.conf.json", "tauri.conf.json", "wails.json"],
+        ),
+        (
+            ValidationSurface::SystemComponent,
+            &[
+                "docker-compose.yml",
+                "docker-compose.yaml",
+                "compose.yml",
+                "compose.yaml",
+                "systemd",
+            ],
+        ),
+        (
+            ValidationSurface::MlSystem,
+            &["dvc.yaml", "mlflow", "MLproject"],
+        ),
+    ]
 }
 
 pub(crate) fn ordered_validation_surfaces() -> [ValidationSurface; 5] {

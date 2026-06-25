@@ -52,6 +52,14 @@ fn git_head(workspace: &Path) -> String {
         .to_string()
 }
 
+fn write_project_marker(workspace: &Path, relative_path: &str, content: &str) {
+    let path = workspace.join(relative_path);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).expect("marker directory");
+    }
+    std::fs::write(path, content).expect("project marker");
+}
+
 fn rewrite_only_worktree_lock_timestamp(store_root: &Path, acquired_at: &str) {
     let lock_dir = store_root.join("locks").join("worktrees");
     let lock_path = std::fs::read_dir(&lock_dir)
@@ -1763,6 +1771,7 @@ fn case_file_requires_verification_for_docs_only_change_when_policy_disallows_ex
 #[test]
 fn case_file_requires_browser_validation_for_ui_change_even_after_build_passes() {
     let temp = tempfile::tempdir().expect("temp dir");
+    write_project_marker(temp.path(), "playwright.config.ts", "export default {};\n");
     let mut store = ProjectStore::open(temp.path()).expect("store");
     store
         .append_event(&Event {
@@ -1819,6 +1828,7 @@ fn case_file_requires_browser_validation_for_ui_change_even_after_build_passes()
 #[test]
 fn case_file_accepts_browser_validation_after_ui_change() {
     let temp = tempfile::tempdir().expect("temp dir");
+    write_project_marker(temp.path(), "playwright.config.ts", "export default {};\n");
     let mut store = ProjectStore::open(temp.path()).expect("store");
     store
         .append_event(&Event {
@@ -1867,6 +1877,7 @@ fn case_file_accepts_browser_validation_after_ui_change() {
 #[test]
 fn force_verification_packet_names_browser_validation_for_ui_change() {
     let temp = tempfile::tempdir().expect("temp dir");
+    write_project_marker(temp.path(), "playwright.config.ts", "export default {};\n");
     let mut store = ProjectStore::open(temp.path()).expect("store");
     store
         .append_event(&Event {
@@ -1916,6 +1927,7 @@ fn force_verification_packet_names_browser_validation_for_ui_change() {
 #[test]
 fn force_verification_packet_names_mobile_validation_for_mobile_change() {
     let temp = tempfile::tempdir().expect("temp dir");
+    write_project_marker(temp.path(), "android/build.gradle", "plugins {}\n");
     let mut store = ProjectStore::open(temp.path()).expect("store");
     store
         .append_event(&Event {
@@ -1967,26 +1979,30 @@ fn force_verification_packet_names_non_browser_runtime_validation_surfaces() {
     let cases = [
         (
             "src-tauri/src/main.rs",
+            "src-tauri/tauri.conf.json",
             "cargo build",
             "native GUI",
             "native GUI smoke, e2e, or screenshot evidence",
         ),
         (
             "system/daemon.rs",
+            "docker-compose.yml",
             "cargo build",
             "system component",
             "service, integration, healthcheck, or daemon smoke evidence",
         ),
         (
             "ml/inference.py",
+            "dvc.yaml",
             "pytest",
             "ML system",
             "model evaluation, benchmark, golden-data, or inference smoke evidence",
         ),
     ];
 
-    for (path, command, expected_surface, expected_evidence) in cases {
+    for (path, marker, command, expected_surface, expected_evidence) in cases {
         let temp = tempfile::tempdir().expect("temp dir");
+        write_project_marker(temp.path(), marker, "{}\n");
         let mut store = ProjectStore::open(temp.path()).expect("store");
         store
             .append_event(&Event {
@@ -2043,32 +2059,37 @@ fn case_file_requires_intended_environment_validation_for_non_web_domains_after_
     let cases = [
         (
             "mobile/app/src/MainActivity.kt",
+            "android/build.gradle",
             "gradle build",
             "mobile app change",
             "simulator/device validation",
         ),
         (
             "src-tauri/src/main.rs",
+            "src-tauri/tauri.conf.json",
             "cargo build",
             "native GUI change",
             "native GUI smoke/e2e validation",
         ),
         (
             "system/daemon.rs",
+            "docker-compose.yml",
             "cargo build",
             "system component change",
             "service or integration validation",
         ),
         (
             "ml/inference.py",
+            "dvc.yaml",
             "pytest",
             "ML system change",
             "model evaluation or benchmark validation",
         ),
     ];
 
-    for (path, command, expected_cause, expected_missing) in cases {
+    for (path, marker, command, expected_cause, expected_missing) in cases {
         let temp = tempfile::tempdir().expect("temp dir");
+        write_project_marker(temp.path(), marker, "{}\n");
         let mut store = ProjectStore::open(temp.path()).expect("store");
         store
             .append_event(&Event {
@@ -2123,8 +2144,52 @@ fn case_file_requires_intended_environment_validation_for_non_web_domains_after_
 }
 
 #[test]
+fn path_only_runtime_surface_hint_does_not_force_intended_environment_validation() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let mut store = ProjectStore::open(temp.path()).expect("store");
+    store
+        .append_event(&Event {
+            time: Some("2026-06-22T12:00:00Z".into()),
+            event_id: Some("evt-path-only-ui-write".into()),
+            agent: "codex".into(),
+            kind: EventKind::FileChange,
+            file: Some("frontend/components/App.tsx".into()),
+            rationale: Some("Update runtime-facing component.".into()),
+            ..Event::default()
+        })
+        .expect("path-only UI change");
+    store
+        .append_event(&Event {
+            time: Some("2026-06-22T12:01:00Z".into()),
+            event_id: Some("evt-path-only-ui-build".into()),
+            agent: "codex".into(),
+            kind: EventKind::CommandResult,
+            command: Some("npm run build".into()),
+            exit_code: Some(0),
+            ..Event::default()
+        })
+        .expect("build");
+
+    let snapshot = DashboardSnapshot::load(store.root(), 20).expect("snapshot");
+    let case_file = build_control_case_file(temp.path(), &snapshot);
+
+    assert!(
+        !case_file
+            .entropy
+            .score(EntropyKind::Verification)
+            .is_some_and(|score| score
+                .top_causes
+                .iter()
+                .any(|cause| cause.contains("intended-environment validation"))),
+        "path/name hints alone should not force runtime validation: {:?}",
+        case_file.entropy
+    );
+}
+
+#[test]
 fn case_file_accepts_mobile_simulator_validation_after_mobile_change() {
     let temp = tempfile::tempdir().expect("temp dir");
+    write_project_marker(temp.path(), "android/build.gradle", "plugins {}\n");
     let mut store = ProjectStore::open(temp.path()).expect("store");
     store
         .append_event(&Event {
@@ -2169,23 +2234,27 @@ fn case_file_accepts_non_web_intended_environment_validation_after_matching_chan
     let cases = [
         (
             "src-tauri/src/main.rs",
+            "src-tauri/tauri.conf.json",
             "cargo test desktop gui smoke",
             "native GUI change",
         ),
         (
             "system/daemon.rs",
+            "docker-compose.yml",
             "docker compose run service healthcheck smoke",
             "system component change",
         ),
         (
             "ml/inference.py",
+            "dvc.yaml",
             "python -m eval benchmark --golden",
             "ML system change",
         ),
     ];
 
-    for (path, command, expected_cause) in cases {
+    for (path, marker, command, expected_cause) in cases {
         let temp = tempfile::tempdir().expect("temp dir");
+        write_project_marker(temp.path(), marker, "{}\n");
         let mut store = ProjectStore::open(temp.path()).expect("store");
         store
             .append_event(&Event {

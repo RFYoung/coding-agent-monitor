@@ -323,15 +323,29 @@ latest probe advice. `local_evidence` never executes arbitrary command text;
 `acceptance_patterns` include the exact marker
 `runtime_validation:<surface>`, such as `runtime_validation:mobile_app`.
 
-Runtime-validation classification is surface-specific:
+Runtime-validation classification is surface-specific and evidence-tiered. The
+monitor auto-discovers high-confidence project markers and verifier mappings
+before asking users for config. Evidence tiers are:
 
-| Surface | Positive command/path signals | Not enough by itself |
+- explicit: verifier config with `runtime_validation:<surface>`.
+- structural: project artifacts such as Playwright/Cypress config,
+  Android/iOS project files, Tauri/Wails config, compose/systemd files, DVC, or
+  MLproject.
+- observed: a completed command with a surface-specific validation tool.
+- text/path hint: path names, broad command words, or transcript keywords.
+
+Only explicit, structural, or observed evidence may create an
+intended-environment validation obligation. Text/path hints may suggest a
+probe, but they cannot by themselves force runtime validation, user interrupts,
+or high-cost handoff actions.
+
+| Surface | Trusted auto-discovery / observed evidence | Weak hint only |
 | --- | --- | --- |
-| `web_ui` | Playwright, Cypress, Puppeteer, browser, route/console/web validation, web/frontend/UI paths | bare `e2e`, `smoke`, or `integration` |
-| `mobile_app` | Appium, Detox, Maestro, emulator/simulator/device tests, Android/iOS/Flutter/React Native paths | generic UI smoke without mobile signal |
-| `native_gui` | GUI/desktop/native/Tauri/Wails plus smoke/e2e/screenshot evidence | bare desktop build or bare `e2e` |
-| `system_component` | healthcheck, systemd, docker compose, service/container/daemon plus smoke/integration evidence | bare `integration` or `smoke` |
-| `ml_system` | eval, benchmark, golden data, MLflow, inference smoke, dataset check, model/training/evals paths | generic test pass without model/data signal |
+| `web_ui` | Playwright/Cypress config or Playwright/Cypress/Puppeteer/browser validation command | web/frontend/UI paths alone |
+| `mobile_app` | Android/iOS project files or Appium/Detox/Maestro/emulator/simulator/device validation command | mobile paths alone |
+| `native_gui` | Tauri/Wails config or GUI/desktop/native smoke/e2e/screenshot command | desktop/native paths alone |
+| `system_component` | compose/systemd files or healthcheck/docker compose/service/container/daemon validation command | system/service paths alone |
+| `ml_system` | DVC/MLproject/MLflow markers or eval/benchmark/golden-data/inference/dataset-check command | model/training/evals paths alone |
 
 Generic runtime words such as `e2e`, `smoke`, `end-to-end`, and `integration`
 raise confidence only when paired with a runtime surface signal or a configured
