@@ -168,7 +168,7 @@ pub fn write_adapter_runtime_auth_config(
     })?;
     let mut config = ProjectConfig::load(&root)?;
     adapter_override_mut(&mut config, agent).runtime_auth = Some(runtime_auth);
-    write_project_config(&root, &config)?;
+    write_project_config_without_advisor_validation(&root, &config)?;
     Ok(config)
 }
 
@@ -491,7 +491,11 @@ pub fn import_local_agent_configs(
         );
     }
 
-    write_project_config(&root, &config)?;
+    if options.advisor_credential_file.is_some() {
+        write_project_config(&root, &config)?;
+    } else {
+        write_project_config_without_advisor_validation(&root, &config)?;
+    }
     Ok(config)
 }
 

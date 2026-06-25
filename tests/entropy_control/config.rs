@@ -293,6 +293,60 @@ fn verifier_config_writer_tolerates_existing_invalid_advisor_profile() {
 }
 
 #[test]
+fn runtime_auth_config_writer_tolerates_existing_invalid_advisor_profile() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let store = ProjectStore::open(workspace.path()).expect("store");
+    std::fs::create_dir_all(store.root().join("credentials").join("coding-plan"))
+        .expect("credential dir");
+    std::fs::write(
+        store
+            .root()
+            .join("credentials")
+            .join("coding-plan")
+            .join("auth.json"),
+        r#"{"OPENAI_API_KEY":"eyJheader.payload.signature"}"#,
+    )
+    .expect("credential file");
+    std::fs::write(
+        store.root().join("config.json"),
+        r#"{
+          "advisor": {
+            "enabled": true,
+            "provider": {
+              "endpoint": "https://api.openai.com/v1/chat/completions",
+              "model": "gpt-5.5",
+              "credential_source": "coding_plan",
+              "credential_file": "credentials/coding-plan/auth.json"
+            }
+          }
+        }"#,
+    )
+    .expect("seed config");
+
+    let updated = coding_agent_monitor::write_adapter_runtime_auth_config(
+        workspace.path(),
+        coding_agent_monitor::AgentKind::Codex,
+        coding_agent_monitor::RuntimeAuthConfig::native_cli_auth(),
+    )
+    .expect("runtime auth registration should not validate unrelated advisor credentials");
+
+    assert_eq!(
+        updated
+            .adapters
+            .codex
+            .runtime_auth
+            .as_ref()
+            .map(|auth| auth.style),
+        Some(coding_agent_monitor::RuntimeAuthStyle::NativeCliAuth)
+    );
+    assert!(updated.advisor.enabled);
+    assert_eq!(
+        updated.advisor.provider.endpoint,
+        "https://api.openai.com/v1/chat/completions"
+    );
+}
+
+#[test]
 fn advisor_endpoint_config_writer_can_select_coding_plan_credentials() {
     let temp = tempfile::tempdir().expect("temp dir");
     std::fs::create_dir_all(
@@ -1155,6 +1209,76 @@ fn local_agent_config_import_records_native_runtime_auth_style() {
     assert!(config_text.contains("native_cli_auth"));
     assert!(!config_text.contains("auth.json"));
     assert!(!config_text.contains(".credentials"));
+}
+
+#[test]
+fn local_agent_config_import_tolerates_existing_invalid_advisor_profile_when_not_changing_advisor()
+{
+    let workspace = tempfile::tempdir().expect("workspace");
+    let store = ProjectStore::open(workspace.path()).expect("store");
+    std::fs::create_dir_all(store.root().join("credentials").join("coding-plan"))
+        .expect("credential dir");
+    std::fs::write(
+        store
+            .root()
+            .join("credentials")
+            .join("coding-plan")
+            .join("auth.json"),
+        r#"{"OPENAI_API_KEY":"eyJheader.payload.signature"}"#,
+    )
+    .expect("credential file");
+    std::fs::write(
+        store.root().join("config.json"),
+        r#"{
+          "advisor": {
+            "enabled": true,
+            "provider": {
+              "endpoint": "https://api.openai.com/v1/chat/completions",
+              "model": "gpt-5.5",
+              "credential_source": "coding_plan",
+              "credential_file": "credentials/coding-plan/auth.json"
+            }
+          }
+        }"#,
+    )
+    .expect("seed config");
+
+    let home = tempfile::tempdir().expect("home");
+    std::fs::create_dir_all(home.path().join(".codex")).expect("codex dir");
+    std::fs::write(
+        home.path().join(".codex").join("config.toml"),
+        "model = \"gpt-5.5\"\n",
+    )
+    .expect("codex config");
+
+    let config = coding_agent_monitor::import_local_agent_configs(
+        workspace.path(),
+        home.path(),
+        coding_agent_monitor::LocalAgentConfigImportOptions {
+            codex: true,
+            claude_code: false,
+            copy_credentials: false,
+            advisor_credential_source: None,
+            advisor_credential_file: None,
+        },
+    )
+    .expect("local import should not validate unrelated advisor credentials");
+
+    assert!(config.local_agents.codex.is_some());
+    assert_eq!(
+        config
+            .adapters
+            .codex
+            .runtime_auth
+            .as_ref()
+            .map(|auth| auth.style),
+        Some(coding_agent_monitor::RuntimeAuthStyle::NativeCliAuth)
+    );
+    assert!(config.advisor.enabled);
+    assert_eq!(
+        config.advisor.provider.endpoint,
+        "https://api.openai.com/v1/chat/completions"
+    );
 }
 
 #[test]
