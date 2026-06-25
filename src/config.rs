@@ -1,3 +1,10 @@
+//! Project configuration persistence and local agent config import.
+//!
+//! Keep two credential boundaries separate here:
+//! - advisor credentials belong to the monitor's optional diagnostic LLM;
+//! - adapter runtime auth describes how the monitor launches or talks to Codex,
+//!   Claude Code, OpenCode, or Pi without copying their CLI auth material.
+
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -44,6 +51,10 @@ pub struct AdvisorEndpointConfigUpdate {
     pub enabled: bool,
 }
 
+/// Non-secret runtime-auth metadata for an adapter.
+///
+/// This records the control surface the monitor may use at runtime. It must not
+/// contain bearer tokens, refresh tokens, copied CLI auth files, or env values.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RuntimeAuthConfig {
     pub style: RuntimeAuthStyle,
@@ -84,7 +95,9 @@ impl Default for RuntimeAuthConfig {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum RuntimeAuthStyle {
+    /// Launch the official local CLI and let it read its own auth store.
     NativeCliAuth,
+    /// Talk to a loopback broker/proxy that owns provider accounts and tokens.
     LocalAuthBroker,
 }
 
@@ -168,6 +181,9 @@ pub fn write_adapter_runtime_auth_config(
     })?;
     let mut config = ProjectConfig::load(&root)?;
     adapter_override_mut(&mut config, agent).runtime_auth = Some(runtime_auth);
+    // Runtime-auth updates do not modify advisor credentials. Existing advisor
+    // config may be intentionally offline or incompatible while the user fixes
+    // adapter launch metadata, so only validate the field being changed.
     write_project_config_without_advisor_validation(&root, &config)?;
     Ok(config)
 }
@@ -185,6 +201,8 @@ fn validate_runtime_auth_config(
     agent: AgentKind,
     runtime_auth: &RuntimeAuthConfig,
 ) -> Result<(), ProjectConfigWriteError> {
+    // Treat runtime-auth metadata as untrusted: config.json can be edited by
+    // hand, and capability data can flow into case files and packets.
     match runtime_auth.style {
         RuntimeAuthStyle::NativeCliAuth => {
             if runtime_auth
@@ -244,6 +262,8 @@ pub(crate) fn runtime_auth_config_is_safe_for_capabilities(
     agent: AgentKind,
     runtime_auth: &RuntimeAuthConfig,
 ) -> bool {
+    // Adapter capabilities are advisor-visible. Invalid metadata is safer to
+    // omit than to expose as a degraded-but-present auth surface.
     validate_runtime_auth_config(agent, runtime_auth).is_ok()
 }
 
@@ -443,6 +463,7 @@ pub fn import_local_agent_configs(
     }
     let root = workspace_root.as_ref().join(".agent-monitor");
     validate_local_import_advisor_credentials(&options, &root)?;
+    let advisor_reference_updated = options.advisor_credential_file.is_some();
 
     fs::create_dir_all(&root).map_err(|source| ProjectConfigWriteError::CreateDir {
         path: root.clone(),
@@ -491,9 +512,12 @@ pub fn import_local_agent_configs(
         );
     }
 
-    if options.advisor_credential_file.is_some() {
+    if advisor_reference_updated {
         write_project_config(&root, &config)?;
     } else {
+        // Plain local imports only record non-secret CLI metadata such as model
+        // hints, command shape, and native-auth style. Do not let an unrelated
+        // stale advisor profile block that adapter setup path.
         write_project_config_without_advisor_validation(&root, &config)?;
     }
     Ok(config)
@@ -976,6 +1000,9 @@ fn write_project_config(
     store_root: &Path,
     config: &ProjectConfig,
 ) -> Result<(), ProjectConfigWriteError> {
+    // Use the strict path whenever a write can create or alter advisor
+    // credential references. This keeps bad token/endpoint combinations out at
+    // the boundary where they are introduced.
     validate_project_config_for_write(config, store_root)?;
     write_project_config_content(store_root, config)
 }
@@ -984,6 +1011,9 @@ fn write_project_config_without_advisor_validation(
     store_root: &Path,
     config: &ProjectConfig,
 ) -> Result<(), ProjectConfigWriteError> {
+    // Narrow config writes use this path when they are not changing advisor
+    // fields. It preserves an existing broken advisor profile so users can fix
+    // adapter/verifier config independently.
     write_project_config_content(store_root, config)
 }
 

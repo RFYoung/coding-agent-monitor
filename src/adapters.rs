@@ -1,3 +1,9 @@
+//! Adapter identity and capability mapping.
+//!
+//! Each adapter exposes a different control surface. The monitor normalizes
+//! those differences into `AdapterCapabilities` before policy and case-file
+//! building, instead of treating agent names as interchangeable.
+
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::str::FromStr;
@@ -186,6 +192,8 @@ fn apply_adapter_override(
         capabilities.requires_external_sandbox = value;
     }
     if let Some(value) = overrides.runtime_auth.clone() {
+        // Runtime-auth metadata can be hand-edited in config.json. Suppress bad
+        // values before they become case-file/advisor evidence.
         capabilities.runtime_auth = if runtime_auth_config_is_safe_for_capabilities(agent, &value) {
             Some(value)
         } else {
