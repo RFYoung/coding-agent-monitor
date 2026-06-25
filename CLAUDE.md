@@ -114,6 +114,8 @@ Treat Codex, Claude Code, OpenCode, and Pi as different control surfaces, not in
 - OpenCode: use plugin/session/ACP surfaces and map its permission model into monitor policy.
 - Pi: run behind an external sandbox when mutation is allowed; the monitor owns filesystem, process, network, and credential boundaries.
 
+Codex and Claude Code runtime authentication follows native-auth or brokered-auth style, not credential import. The monitor may launch the official CLI with its own native config store, or talk to a local cc-switch-style broker/proxy that owns OAuth/API tokens, provider routing, and format conversion. The monitor stores only non-secret profile metadata such as command, endpoint, profile/account id, model, API format, and health status.
+
 Adapters normalize into the central event model before control decisions. Adapter-specific renderers compile from one internal `ControlPacket`.
 
 ## Implementation Priorities
@@ -148,10 +150,13 @@ agent-monitor advise --workspace=<path>
 agent-monitor probe --workspace=<path>
 agent-monitor handoff --workspace=<path> --target-agent=claude-code
 agent-monitor config advisor --workspace=<path> --endpoint=<url> --model=<model> --api-key-env=<ENV>
-agent-monitor config import-local --workspace=<path> --advisor-credential-source=coding-plan --advisor-credential-file=<path>
+agent-monitor config import-local --workspace=<path>
+agent-monitor config runtime-auth --workspace=<path> --agent=codex --style=native-cli-auth
+agent-monitor config runtime-auth --workspace=<path> --agent=codex --style=local-auth-broker --endpoint=http://127.0.0.1:8787/v1 --profile-id=<profile> --model=<model> --api-format=openai_responses
+agent-monitor config import-coding-plan-credentials --workspace=<path> --source-file=<path> --endpoint=<url> --model=<model>
 ```
 
-Never copy Codex or Claude runtime credentials into this project. Advisor credentials must come from a dedicated coding-plan profile or env var, not `.codex` or `.claude` auth files.
+Never copy Codex or Claude runtime credentials into this project. Advisor credentials must come from a dedicated coding-plan profile or env var, not `.codex` or `.claude` auth files. Native agent auth is allowed only as an opaque capability: launch the official CLI or connect to a local auth broker/proxy that owns tokens.
 
 ## Documentation Map
 

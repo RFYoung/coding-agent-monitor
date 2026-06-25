@@ -176,6 +176,68 @@ OpenAI-compatible endpoints may use `https://`; Windows builds use the OS
 WinHTTP stack so production provider configuration does not require shelling
 out to a separate command.
 
+Runtime agent authentication is a separate surface from advisor credentials.
+The monitor should copy cc-switch's useful split, not its secret material:
+agent login state remains in the native CLI store or in an external local
+broker, while the monitor records only routing and capability metadata. For
+Codex, the relevant distinction is login state such as `~/.codex/auth.json`
+versus non-secret execution/routing hints such as command, model, sandbox,
+approval policy, endpoint profile, or API format. For Claude Code, the monitor
+records hook/headless capability, enabled plugins, env key names, provider
+profile id, API format, and broker health, but not API keys, OAuth refresh
+tokens, access tokens, or credential JSON.
+
+Allowed runtime-auth modes:
+
+- `native_cli_auth`: launch `codex`, `claude`, or another official CLI and let
+  that process resolve credentials from its normal user-level config store.
+  The monitor may import safe config summaries and mark `uses_native_auth`, but
+  it must not read, copy, persist, packetize, or advise over the auth file.
+- `local_auth_broker`: connect to a localhost broker/proxy profile that owns
+  OAuth/API tokens, provider hot switching, account selection, and format
+  conversion. The monitor stores endpoint, profile/account id, model, API
+  format, capability flags, and redacted health state only. Refresh tokens stay
+  inside the broker; access tokens are broker-local and memory-scoped whenever
+  possible.
+
+Forbidden runtime-auth behavior:
+
+- copying `.codex/auth.json`, `.claude` credentials, or broker token stores
+  into `.agent-monitor`.
+- storing raw refresh tokens, access tokens, API keys, auth JSON, or private
+  env values in `config.json`, case files, packets, advice, traces, outcomes,
+  logs, or dashboard details.
+- treating native Codex or Claude Code runtime auth as advisor credentials.
+  Advisor credentials still require `api_key_env` or a dedicated coding-plan
+  profile. A broker endpoint can be used for the advisor only when explicitly
+  configured as an advisor endpoint and its credential compatibility check
+  passes.
+
+Runtime-auth config example:
+
+```json
+{
+  "adapters": {
+    "codex": {
+      "runtime_auth": {
+        "style": "local_auth_broker",
+        "endpoint": "http://127.0.0.1:8787/v1",
+        "profile_id": "cc-switch-codex",
+        "account_id": "chatgpt-pro",
+        "model": "gpt-5.5",
+        "api_format": "openai_responses",
+        "health_status": "healthy"
+      }
+    },
+    "claude_code": {
+      "runtime_auth": {
+        "style": "native_cli_auth"
+      }
+    }
+  }
+}
+```
+
 Before calling the endpoint, the monitor builds an advisor-visible clone of the
 case file bounded by `max_input_tokens`. The stored case file remains complete,
 but low-priority evidence is removed from the endpoint request when the prompt
@@ -503,6 +565,12 @@ map includes whether each adapter is enabled, so advisor proposals and
 validator fallback selection share the same configured availability boundary.
 When that map contains no safe writable handoff target, the case file prunes
 handoff action kinds from `allowed_actions` before advisor validation.
+
+Capability records also include the runtime-auth style. `native_cli_auth`
+means the monitor can run the official command without owning credentials.
+`local_auth_broker` means the monitor can call a cc-switch-style local endpoint
+using only a profile reference and redacted status. `project_secret` is not an
+allowed runtime-auth style for Codex or Claude Code adapters.
 
 ## Memory Governance
 

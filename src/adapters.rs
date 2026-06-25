@@ -2,7 +2,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::str::FromStr;
 
-use crate::{AdapterCapabilities, AdapterConfig, AdapterOverride};
+use crate::{
+    AdapterCapabilities, AdapterConfig, AdapterOverride, RuntimeAuthConfig,
+    config::runtime_auth_config_is_safe_for_capabilities,
+};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -42,6 +45,7 @@ pub fn adapter_capabilities_for(agent: AgentKind) -> AdapterCapabilities {
             supports_readonly_mode: true,
             supports_workspace_write_mode: true,
             requires_external_sandbox: false,
+            runtime_auth: Some(RuntimeAuthConfig::native_cli_auth()),
         },
         AgentKind::ClaudeCode => AdapterCapabilities {
             enabled: true,
@@ -61,6 +65,7 @@ pub fn adapter_capabilities_for(agent: AgentKind) -> AdapterCapabilities {
             supports_readonly_mode: true,
             supports_workspace_write_mode: true,
             requires_external_sandbox: false,
+            runtime_auth: Some(RuntimeAuthConfig::native_cli_auth()),
         },
         AgentKind::Pi => AdapterCapabilities {
             enabled: true,
@@ -80,6 +85,7 @@ pub fn adapter_capabilities_for(agent: AgentKind) -> AdapterCapabilities {
             supports_readonly_mode: false,
             supports_workspace_write_mode: false,
             requires_external_sandbox: true,
+            runtime_auth: Some(RuntimeAuthConfig::native_cli_auth()),
         },
         AgentKind::OpenCode => AdapterCapabilities {
             enabled: true,
@@ -99,6 +105,7 @@ pub fn adapter_capabilities_for(agent: AgentKind) -> AdapterCapabilities {
             supports_readonly_mode: true,
             supports_workspace_write_mode: true,
             requires_external_sandbox: false,
+            runtime_auth: Some(RuntimeAuthConfig::native_cli_auth()),
         },
     }
 }
@@ -114,7 +121,7 @@ pub fn adapter_capabilities_for_config(
         AgentKind::Pi => &config.pi,
         AgentKind::OpenCode => &config.opencode,
     };
-    apply_adapter_override(&mut capabilities, overrides);
+    apply_adapter_override(agent, &mut capabilities, overrides);
     capabilities
 }
 
@@ -137,7 +144,11 @@ pub(crate) fn adapter_capabilities_from_config(
     .collect()
 }
 
-fn apply_adapter_override(capabilities: &mut AdapterCapabilities, overrides: &AdapterOverride) {
+fn apply_adapter_override(
+    agent: AgentKind,
+    capabilities: &mut AdapterCapabilities,
+    overrides: &AdapterOverride,
+) {
     if let Some(value) = overrides.enabled {
         capabilities.enabled = value;
     }
@@ -173,6 +184,13 @@ fn apply_adapter_override(capabilities: &mut AdapterCapabilities, overrides: &Ad
     }
     if let Some(value) = overrides.requires_external_sandbox {
         capabilities.requires_external_sandbox = value;
+    }
+    if let Some(value) = overrides.runtime_auth.clone() {
+        capabilities.runtime_auth = if runtime_auth_config_is_safe_for_capabilities(agent, &value) {
+            Some(value)
+        } else {
+            None
+        };
     }
 }
 

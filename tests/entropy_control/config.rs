@@ -1085,6 +1085,79 @@ fn local_agent_config_import_never_copies_local_cli_auth_into_project_credential
 }
 
 #[test]
+fn local_agent_config_import_records_native_runtime_auth_style() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let home = tempfile::tempdir().expect("home");
+    std::fs::create_dir_all(home.path().join(".codex")).expect("codex dir");
+    std::fs::create_dir_all(home.path().join(".claude")).expect("claude dir");
+    std::fs::write(
+        home.path().join(".codex").join("config.toml"),
+        "model = \"gpt-5.5\"\n",
+    )
+    .expect("codex config");
+    std::fs::write(
+        home.path().join(".claude").join("settings.json"),
+        "{\"effortLevel\":\"medium\"}\n",
+    )
+    .expect("claude settings");
+
+    let config = coding_agent_monitor::import_local_agent_configs(
+        workspace.path(),
+        home.path(),
+        coding_agent_monitor::LocalAgentConfigImportOptions {
+            codex: true,
+            claude_code: true,
+            copy_credentials: false,
+            advisor_credential_source: None,
+            advisor_credential_file: None,
+        },
+    )
+    .expect("import configs");
+
+    let codex = config.local_agents.codex.as_ref().expect("codex import");
+    let claude = config
+        .local_agents
+        .claude_code
+        .as_ref()
+        .expect("claude import");
+    assert_eq!(
+        codex.runtime_auth.as_ref().map(|auth| auth.style),
+        Some(coding_agent_monitor::RuntimeAuthStyle::NativeCliAuth)
+    );
+    assert_eq!(
+        claude.runtime_auth.as_ref().map(|auth| auth.style),
+        Some(coding_agent_monitor::RuntimeAuthStyle::NativeCliAuth)
+    );
+    assert_eq!(
+        coding_agent_monitor::adapter_capabilities_for_config(
+            coding_agent_monitor::AgentKind::Codex,
+            &config.adapters
+        )
+        .runtime_auth
+        .as_ref()
+        .map(|auth| auth.style),
+        Some(coding_agent_monitor::RuntimeAuthStyle::NativeCliAuth)
+    );
+    assert_eq!(
+        coding_agent_monitor::adapter_capabilities_for_config(
+            coding_agent_monitor::AgentKind::ClaudeCode,
+            &config.adapters
+        )
+        .runtime_auth
+        .as_ref()
+        .map(|auth| auth.style),
+        Some(coding_agent_monitor::RuntimeAuthStyle::NativeCliAuth)
+    );
+
+    let config_text =
+        std::fs::read_to_string(workspace.path().join(".agent-monitor").join("config.json"))
+            .expect("project config");
+    assert!(config_text.contains("native_cli_auth"));
+    assert!(!config_text.contains("auth.json"));
+    assert!(!config_text.contains(".credentials"));
+}
+
+#[test]
 fn local_agent_config_import_rejects_local_cli_auth_copy_request() {
     let workspace = tempfile::tempdir().expect("workspace");
     let home = tempfile::tempdir().expect("home");
@@ -1120,6 +1193,121 @@ fn local_agent_config_import_rejects_local_cli_auth_copy_request() {
             .path()
             .join(".agent-monitor")
             .join("credentials")
+            .exists()
+    );
+}
+
+#[test]
+fn adapter_runtime_auth_config_persists_local_broker_metadata_without_secret_values() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let auth = coding_agent_monitor::RuntimeAuthConfig {
+        style: coding_agent_monitor::RuntimeAuthStyle::LocalAuthBroker,
+        endpoint: Some("http://127.0.0.1:8787/v1".into()),
+        profile_id: Some("cc-switch-codex".into()),
+        account_id: Some("chatgpt-pro".into()),
+        model: Some("gpt-5.5".into()),
+        api_format: Some("openai_responses".into()),
+        health_status: Some("healthy".into()),
+    };
+
+    let config = coding_agent_monitor::write_adapter_runtime_auth_config(
+        workspace.path(),
+        coding_agent_monitor::AgentKind::Codex,
+        auth,
+    )
+    .expect("write runtime auth");
+
+    let runtime_auth = config
+        .adapters
+        .codex
+        .runtime_auth
+        .as_ref()
+        .expect("runtime auth");
+    assert_eq!(
+        runtime_auth.style,
+        coding_agent_monitor::RuntimeAuthStyle::LocalAuthBroker
+    );
+    assert_eq!(
+        runtime_auth.endpoint.as_deref(),
+        Some("http://127.0.0.1:8787/v1")
+    );
+    assert_eq!(
+        coding_agent_monitor::adapter_capabilities_for_config(
+            coding_agent_monitor::AgentKind::Codex,
+            &config.adapters
+        )
+        .runtime_auth
+        .as_ref()
+        .map(|auth| auth.profile_id.as_deref()),
+        Some(Some("cc-switch-codex"))
+    );
+
+    let config_text =
+        std::fs::read_to_string(workspace.path().join(".agent-monitor").join("config.json"))
+            .expect("project config");
+    assert!(config_text.contains("local_auth_broker"));
+    assert!(config_text.contains("cc-switch-codex"));
+    assert!(!config_text.contains("access_token"));
+    assert!(!config_text.contains("refresh_token"));
+    assert!(!config_text.contains("sk-"));
+}
+
+#[test]
+fn adapter_runtime_auth_config_rejects_non_loopback_broker_endpoint() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let auth = coding_agent_monitor::RuntimeAuthConfig {
+        style: coding_agent_monitor::RuntimeAuthStyle::LocalAuthBroker,
+        endpoint: Some("https://api.openai.com/v1".into()),
+        profile_id: Some("cc-switch-codex".into()),
+        account_id: None,
+        model: None,
+        api_format: Some("openai_responses".into()),
+        health_status: None,
+    };
+
+    let error = coding_agent_monitor::write_adapter_runtime_auth_config(
+        workspace.path(),
+        coding_agent_monitor::AgentKind::Codex,
+        auth,
+    )
+    .expect_err("non-local broker endpoint should be rejected");
+
+    assert!(error.to_string().contains("loopback"));
+    assert!(
+        !workspace
+            .path()
+            .join(".agent-monitor")
+            .join("config.json")
+            .exists()
+    );
+}
+
+#[test]
+fn adapter_runtime_auth_config_rejects_secret_like_broker_metadata() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let auth = coding_agent_monitor::RuntimeAuthConfig {
+        style: coding_agent_monitor::RuntimeAuthStyle::LocalAuthBroker,
+        endpoint: Some("http://localhost:8787/v1".into()),
+        profile_id: Some("access_token=sk-should-not-save".into()),
+        account_id: None,
+        model: None,
+        api_format: Some("openai_responses".into()),
+        health_status: None,
+    };
+
+    let error = coding_agent_monitor::write_adapter_runtime_auth_config(
+        workspace.path(),
+        coding_agent_monitor::AgentKind::ClaudeCode,
+        auth,
+    )
+    .expect_err("secret-like broker metadata should be rejected");
+
+    assert!(error.to_string().contains("secret-like"));
+    assert!(
+        !workspace
+            .path()
+            .join(".agent-monitor")
+            .join("config.json")
             .exists()
     );
 }

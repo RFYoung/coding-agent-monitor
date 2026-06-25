@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::AgentKind;
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ProjectConfig {
     #[serde(default)]
@@ -40,6 +42,50 @@ pub struct AdvisorEndpointConfigUpdate {
     pub credential_source: Option<AdvisorCredentialSource>,
     pub credential_file: Option<String>,
     pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RuntimeAuthConfig {
+    pub style: RuntimeAuthStyle,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub endpoint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_format: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub health_status: Option<String>,
+}
+
+impl RuntimeAuthConfig {
+    pub fn native_cli_auth() -> Self {
+        Self {
+            style: RuntimeAuthStyle::NativeCliAuth,
+            endpoint: None,
+            profile_id: None,
+            account_id: None,
+            model: None,
+            api_format: None,
+            health_status: None,
+        }
+    }
+}
+
+impl Default for RuntimeAuthConfig {
+    fn default() -> Self {
+        Self::native_cli_auth()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeAuthStyle {
+    NativeCliAuth,
+    LocalAuthBroker,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -107,6 +153,160 @@ pub fn write_advisor_endpoint_config(
     }
     write_project_config(&root, &config)?;
     Ok(config)
+}
+
+pub fn write_adapter_runtime_auth_config(
+    workspace_root: impl AsRef<Path>,
+    agent: AgentKind,
+    runtime_auth: RuntimeAuthConfig,
+) -> Result<ProjectConfig, ProjectConfigWriteError> {
+    validate_runtime_auth_config(agent, &runtime_auth)?;
+    let root = workspace_root.as_ref().join(".agent-monitor");
+    fs::create_dir_all(&root).map_err(|source| ProjectConfigWriteError::CreateDir {
+        path: root.clone(),
+        source,
+    })?;
+    let mut config = ProjectConfig::load(&root)?;
+    adapter_override_mut(&mut config, agent).runtime_auth = Some(runtime_auth);
+    write_project_config(&root, &config)?;
+    Ok(config)
+}
+
+fn adapter_override_mut(config: &mut ProjectConfig, agent: AgentKind) -> &mut AdapterOverride {
+    match agent {
+        AgentKind::Codex => &mut config.adapters.codex,
+        AgentKind::ClaudeCode => &mut config.adapters.claude_code,
+        AgentKind::Pi => &mut config.adapters.pi,
+        AgentKind::OpenCode => &mut config.adapters.opencode,
+    }
+}
+
+fn validate_runtime_auth_config(
+    agent: AgentKind,
+    runtime_auth: &RuntimeAuthConfig,
+) -> Result<(), ProjectConfigWriteError> {
+    match runtime_auth.style {
+        RuntimeAuthStyle::NativeCliAuth => {
+            if runtime_auth
+                .endpoint
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty())
+            {
+                return Err(ProjectConfigWriteError::InvalidOptions(
+                    "native_cli_auth must not include a broker endpoint".into(),
+                ));
+            }
+        }
+        RuntimeAuthStyle::LocalAuthBroker => {
+            let endpoint = runtime_auth
+                .endpoint
+                .as_deref()
+                .filter(|endpoint| !endpoint.trim().is_empty())
+                .ok_or_else(|| {
+                    ProjectConfigWriteError::InvalidOptions(
+                        "local_auth_broker requires endpoint".into(),
+                    )
+                })?;
+            if !is_loopback_http_endpoint(endpoint) {
+                return Err(ProjectConfigWriteError::InvalidOptions(
+                    "local_auth_broker endpoint must be http(s) loopback or localhost".into(),
+                ));
+            }
+        }
+    }
+
+    for (field, value) in runtime_auth_string_fields(runtime_auth) {
+        if let Some(value) = value
+            && runtime_auth_field_is_secret_like(value)
+        {
+            return Err(ProjectConfigWriteError::InvalidOptions(format!(
+                "runtime auth {field} contains secret-like or local CLI auth material"
+            )));
+        }
+    }
+
+    if matches!(agent, AgentKind::Codex | AgentKind::ClaudeCode)
+        && runtime_auth.style == RuntimeAuthStyle::LocalAuthBroker
+        && runtime_auth
+            .profile_id
+            .as_deref()
+            .is_none_or(|value| value.trim().is_empty())
+    {
+        return Err(ProjectConfigWriteError::InvalidOptions(
+            "local_auth_broker requires profile_id for Codex and Claude Code".into(),
+        ));
+    }
+
+    Ok(())
+}
+
+pub(crate) fn runtime_auth_config_is_safe_for_capabilities(
+    agent: AgentKind,
+    runtime_auth: &RuntimeAuthConfig,
+) -> bool {
+    validate_runtime_auth_config(agent, runtime_auth).is_ok()
+}
+
+fn runtime_auth_string_fields(
+    runtime_auth: &RuntimeAuthConfig,
+) -> [(&'static str, Option<&str>); 6] {
+    [
+        ("endpoint", runtime_auth.endpoint.as_deref()),
+        ("profile_id", runtime_auth.profile_id.as_deref()),
+        ("account_id", runtime_auth.account_id.as_deref()),
+        ("model", runtime_auth.model.as_deref()),
+        ("api_format", runtime_auth.api_format.as_deref()),
+        ("health_status", runtime_auth.health_status.as_deref()),
+    ]
+}
+
+fn runtime_auth_field_is_secret_like(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    lower.contains("access_token")
+        || lower.contains("refresh_token")
+        || lower.contains("authorization")
+        || lower.contains("x-api-key")
+        || lower.contains("api_key")
+        || lower.contains("bearer ")
+        || lower.contains("token=")
+        || lower.contains("secret=")
+        || lower.contains("password=")
+        || lower.contains("sk-")
+        || lower.contains(".codex")
+        || lower.contains(".claude")
+        || lower.contains("auth.json")
+        || lower.contains(".credentials")
+        || looks_like_jwt_bearer_token(value)
+}
+
+fn is_loopback_http_endpoint(endpoint: &str) -> bool {
+    let endpoint = endpoint.trim();
+    let Some(rest) = endpoint
+        .strip_prefix("http://")
+        .or_else(|| endpoint.strip_prefix("https://"))
+    else {
+        return false;
+    };
+    let authority = rest
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or_default()
+        .trim();
+    if authority.is_empty() || authority.contains('@') {
+        return false;
+    }
+    let host = if let Some(rest) = authority.strip_prefix('[') {
+        let Some((host, _)) = rest.split_once(']') else {
+            return false;
+        };
+        host
+    } else {
+        authority.split(':').next().unwrap_or_default()
+    }
+    .trim()
+    .to_ascii_lowercase();
+
+    host == "localhost" || host == "127.0.0.1" || host.starts_with("127.") || host == "::1"
 }
 
 pub fn write_verifier_config(
@@ -197,6 +397,8 @@ pub struct LocalCodexConfig {
     pub command: Vec<String>,
     #[serde(default)]
     pub uses_native_auth: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_auth: Option<RuntimeAuthConfig>,
     #[serde(
         default,
         alias = "credential_file",
@@ -219,6 +421,8 @@ pub struct LocalClaudeCodeConfig {
     pub command: Vec<String>,
     #[serde(default)]
     pub uses_native_auth: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_auth: Option<RuntimeAuthConfig>,
     #[serde(
         default,
         alias = "credential_file",
@@ -259,6 +463,7 @@ pub fn import_local_agent_configs(
         config.adapters.codex.can_run_headless = Some(true);
         config.adapters.codex.can_inject_context = Some(true);
         config.adapters.codex.supports_workspace_write_mode = Some(true);
+        config.adapters.codex.runtime_auth = Some(RuntimeAuthConfig::native_cli_auth());
     }
 
     if options.claude_code
@@ -272,6 +477,7 @@ pub fn import_local_agent_configs(
         config.adapters.claude_code.can_inject_context = Some(true);
         config.adapters.claude_code.can_run_headless = Some(true);
         config.adapters.claude_code.supports_workspace_write_mode = Some(true);
+        config.adapters.claude_code.runtime_auth = Some(RuntimeAuthConfig::native_cli_auth());
     }
 
     if let Some(credential_file) = options.advisor_credential_file.as_deref() {
@@ -834,6 +1040,7 @@ fn read_codex_config(home_dir: &Path) -> Result<Option<LocalCodexConfig>, Projec
         approval_policy: toml_string_value(&content, "approval_policy"),
         command: vec!["codex".into(), "exec".into(), "--json".into()],
         uses_native_auth: true,
+        runtime_auth: Some(RuntimeAuthConfig::native_cli_auth()),
         advisor_credential_file: None,
     }))
 }
@@ -866,6 +1073,7 @@ fn read_claude_code_config(
         env_keys,
         command: vec!["claude".into()],
         uses_native_auth: true,
+        runtime_auth: Some(RuntimeAuthConfig::native_cli_auth()),
         advisor_credential_file: None,
     }))
 }
@@ -1120,6 +1328,8 @@ pub struct AdapterOverride {
     pub supports_workspace_write_mode: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requires_external_sandbox: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_auth: Option<RuntimeAuthConfig>,
 }
 
 fn default_api_key_env() -> String {

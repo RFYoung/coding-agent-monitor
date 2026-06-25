@@ -708,3 +708,73 @@ fn advisor_validation_rejects_handoff_when_case_file_has_no_safe_adapter_target(
         other => panic!("expected forbidden switch_agent action, got {other:?}"),
     }
 }
+
+#[test]
+fn case_file_adapter_capabilities_include_runtime_auth_metadata_without_secrets() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let mut config = ProjectConfig::default();
+    config.adapters.codex.runtime_auth = Some(coding_agent_monitor::RuntimeAuthConfig {
+        style: coding_agent_monitor::RuntimeAuthStyle::LocalAuthBroker,
+        endpoint: Some("http://localhost:8787/v1".into()),
+        profile_id: Some("cc-switch-codex".into()),
+        account_id: Some("chatgpt-pro".into()),
+        model: Some("gpt-5.5".into()),
+        api_format: Some("openai_responses".into()),
+        health_status: Some("healthy".into()),
+    });
+    let snapshot =
+        DashboardSnapshot::load(ProjectStore::open(temp.path()).expect("store").root(), 20)
+            .expect("snapshot");
+
+    let case_file = build_control_case_file_with_config(temp.path(), &snapshot, &config);
+
+    let codex = case_file
+        .adapter_capabilities
+        .get("codex")
+        .and_then(|capabilities| capabilities.runtime_auth.as_ref())
+        .expect("codex runtime auth capability");
+    assert_eq!(
+        codex.style,
+        coding_agent_monitor::RuntimeAuthStyle::LocalAuthBroker
+    );
+    assert_eq!(codex.profile_id.as_deref(), Some("cc-switch-codex"));
+    assert_eq!(codex.api_format.as_deref(), Some("openai_responses"));
+
+    let serialized = serde_json::to_string(&case_file).expect("case file json");
+    assert!(serialized.contains("local_auth_broker"));
+    assert!(serialized.contains("cc-switch-codex"));
+    assert!(!serialized.contains("access_token"));
+    assert!(!serialized.contains("refresh_token"));
+    assert!(!serialized.contains("sk-"));
+}
+
+#[test]
+fn case_file_adapter_capabilities_drop_invalid_runtime_auth_metadata() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let mut config = ProjectConfig::default();
+    config.adapters.codex.runtime_auth = Some(coding_agent_monitor::RuntimeAuthConfig {
+        style: coding_agent_monitor::RuntimeAuthStyle::LocalAuthBroker,
+        endpoint: Some("http://localhost:8787/v1".into()),
+        profile_id: Some("access_token=sk-should-not-reach-case-file".into()),
+        account_id: None,
+        model: None,
+        api_format: Some("openai_responses".into()),
+        health_status: None,
+    });
+    let snapshot =
+        DashboardSnapshot::load(ProjectStore::open(temp.path()).expect("store").root(), 20)
+            .expect("snapshot");
+
+    let case_file = build_control_case_file_with_config(temp.path(), &snapshot, &config);
+
+    assert!(
+        case_file
+            .adapter_capabilities
+            .get("codex")
+            .and_then(|capabilities| capabilities.runtime_auth.as_ref())
+            .is_none()
+    );
+    let serialized = serde_json::to_string(&case_file).expect("case file json");
+    assert!(!serialized.contains("sk-should-not-reach-case-file"));
+    assert!(!serialized.contains("access_token"));
+}

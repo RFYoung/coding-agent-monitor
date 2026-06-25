@@ -4,17 +4,18 @@ use coding_agent_monitor::{
     AgentReviewAction, AgentReviewReport, BlameQuery, CalibrationQuery, Config, ControlActionKind,
     DashboardSnapshot, DevHistoryAnalysisOptions, DevHistoryRawExportOptions, Event, EventKind,
     InstallMode, Intervention, InterventionKind, LocalAgentConfigImportOptions, MemorySource,
-    ProjectConfig, ProjectStore, RepoHunkHistoryQuery, RequirementGraphQuery, TraceEntry,
-    VerificationScope, VerifierConfig, WrappedCommand, adapter_capabilities_for_config,
-    adapter_hook_response, advise_workspace, agent_kind_label, analyze_local_dev_history,
-    create_demo_workspace, detect_running_agents_from_system, export_raw_dev_history,
-    handoff_workspace, import_coding_plan_advisor_credentials, import_local_agent_configs,
-    injection_plan_for_workspace, install_agent_injection, judge_snapshot, load_blame_report,
-    load_calibration_report, load_completion_certificate_report, load_decision_trails,
-    load_repo_hunk_history, load_requirement_graph, normalize_adapter_event,
+    ProjectConfig, ProjectStore, RepoHunkHistoryQuery, RequirementGraphQuery, RuntimeAuthConfig,
+    RuntimeAuthStyle, TraceEntry, VerificationScope, VerifierConfig, WrappedCommand,
+    adapter_capabilities_for_config, adapter_hook_response, advise_workspace, agent_kind_label,
+    analyze_local_dev_history, create_demo_workspace, detect_running_agents_from_system,
+    export_raw_dev_history, handoff_workspace, import_coding_plan_advisor_credentials,
+    import_local_agent_configs, injection_plan_for_workspace, install_agent_injection,
+    judge_snapshot, load_blame_report, load_calibration_report, load_completion_certificate_report,
+    load_decision_trails, load_repo_hunk_history, load_requirement_graph, normalize_adapter_event,
     prepare_wrapped_launch, promote_memory_candidate, record_repo_audit_history,
     record_trace_entry, run_adapter_jsonl_with_store, run_jsonl, run_jsonl_with_store, run_probe,
-    run_verifier, run_wrapped_command, write_advisor_endpoint_config, write_verifier_config,
+    run_verifier, run_wrapped_command, write_adapter_runtime_auth_config,
+    write_advisor_endpoint_config, write_verifier_config,
 };
 use std::env;
 use std::io::Write;
@@ -266,6 +267,23 @@ fn main() -> ExitCode {
             workspace,
             verifier,
         } => match write_verifier_config(&workspace, verifier) {
+            Ok(config) => {
+                if let Err(error) = serde_json::to_writer_pretty(std::io::stdout(), &config) {
+                    eprintln!("encode project config: {error}");
+                    return ExitCode::from(1);
+                }
+                println!();
+            }
+            Err(error) => {
+                eprintln!("{error}");
+                return ExitCode::from(1);
+            }
+        },
+        CliCommand::ConfigRuntimeAuth {
+            workspace,
+            agent,
+            runtime_auth,
+        } => match write_adapter_runtime_auth_config(&workspace, agent, runtime_auth) {
             Ok(config) => {
                 if let Err(error) = serde_json::to_writer_pretty(std::io::stdout(), &config) {
                     eprintln!("encode project config: {error}");
@@ -644,6 +662,11 @@ enum CliCommand {
     ConfigVerifier {
         workspace: PathBuf,
         verifier: VerifierConfig,
+    },
+    ConfigRuntimeAuth {
+        workspace: PathBuf,
+        agent: AgentKind,
+        runtime_auth: RuntimeAuthConfig,
     },
     ConfigImportLocal {
         workspace: PathBuf,
@@ -1040,12 +1063,13 @@ fn parse_config_args(args: impl IntoIterator<Item = String>) -> Result<CliComman
     match args.first().map(String::as_str) {
         Some("advisor") => parse_config_advisor_args(args.into_iter().skip(1)),
         Some("verifier") => parse_config_verifier_args(args.into_iter().skip(1)),
+        Some("runtime-auth") => parse_config_runtime_auth_args(args.into_iter().skip(1)),
         Some("import-local") => parse_config_import_local_args(args.into_iter().skip(1)),
         Some("import-coding-plan-credentials") => {
             parse_config_import_coding_plan_credentials_args(args.into_iter().skip(1))
         }
         _ => Err(
-            "config requires subcommand: advisor|verifier|import-local|import-coding-plan-credentials"
+            "config requires subcommand: advisor|verifier|runtime-auth|import-local|import-coding-plan-credentials"
                 .into(),
         ),
     }
@@ -1195,6 +1219,71 @@ fn parse_config_verifier_args(
             acceptance_patterns,
         },
     })
+}
+
+fn parse_config_runtime_auth_args(
+    args: impl IntoIterator<Item = String>,
+) -> Result<CliCommand, String> {
+    let mut workspace = PathBuf::from(".");
+    let mut agent = None;
+    let mut style = None;
+    let mut endpoint = None;
+    let mut profile_id = None;
+    let mut account_id = None;
+    let mut model = None;
+    let mut api_format = None;
+    let mut health_status = None;
+
+    for arg in args {
+        if let Some(value) = arg.strip_prefix("--workspace=") {
+            workspace = PathBuf::from(value);
+        } else if let Some(value) = arg.strip_prefix("--agent=") {
+            agent = Some(value.parse().map_err(|error| format!("{error}"))?);
+        } else if let Some(value) = arg.strip_prefix("--style=") {
+            style = Some(parse_runtime_auth_style(value)?);
+        } else if let Some(value) = arg.strip_prefix("--endpoint=") {
+            endpoint = Some(non_empty_arg("--endpoint", value)?.to_string());
+        } else if let Some(value) = arg.strip_prefix("--profile-id=") {
+            profile_id = Some(non_empty_arg("--profile-id", value)?.to_string());
+        } else if let Some(value) = arg.strip_prefix("--account-id=") {
+            account_id = Some(non_empty_arg("--account-id", value)?.to_string());
+        } else if let Some(value) = arg.strip_prefix("--model=") {
+            model = Some(non_empty_arg("--model", value)?.to_string());
+        } else if let Some(value) = arg.strip_prefix("--api-format=") {
+            api_format = Some(non_empty_arg("--api-format", value)?.to_string());
+        } else if let Some(value) = arg.strip_prefix("--health-status=") {
+            health_status = Some(non_empty_arg("--health-status", value)?.to_string());
+        } else {
+            return Err(format!("unknown config runtime-auth argument: {arg}"));
+        }
+    }
+
+    let agent = agent.ok_or_else(|| {
+        "config runtime-auth requires --agent=<codex|claude-code|pi|opencode>".to_string()
+    })?;
+    let style = style.ok_or_else(|| "config runtime-auth requires --style=<style>".to_string())?;
+    Ok(CliCommand::ConfigRuntimeAuth {
+        workspace,
+        agent,
+        runtime_auth: RuntimeAuthConfig {
+            style,
+            endpoint,
+            profile_id,
+            account_id,
+            model,
+            api_format,
+            health_status,
+        },
+    })
+}
+
+fn parse_runtime_auth_style(value: &str) -> Result<RuntimeAuthStyle, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "native_cli_auth" | "native-cli-auth" => Ok(RuntimeAuthStyle::NativeCliAuth),
+        "local_auth_broker" | "local-auth-broker" => Ok(RuntimeAuthStyle::LocalAuthBroker),
+        "" => Err("--style must not be empty".into()),
+        _ => Err("--style must be native-cli-auth or local-auth-broker".into()),
+    }
 }
 
 fn parse_verification_scope(value: &str) -> Result<VerificationScope, String> {
@@ -2458,6 +2547,7 @@ mod tests {
             | CliCommand::HookResponse { .. }
             | CliCommand::ConfigAdvisor { .. }
             | CliCommand::ConfigVerifier { .. }
+            | CliCommand::ConfigRuntimeAuth { .. }
             | CliCommand::ConfigImportLocal { .. }
             | CliCommand::ConfigImportCodingPlanCredentials { .. }
             | CliCommand::Advise { .. }
@@ -2515,6 +2605,7 @@ mod tests {
             | CliCommand::HookResponse { .. }
             | CliCommand::ConfigAdvisor { .. }
             | CliCommand::ConfigVerifier { .. }
+            | CliCommand::ConfigRuntimeAuth { .. }
             | CliCommand::ConfigImportLocal { .. }
             | CliCommand::ConfigImportCodingPlanCredentials { .. }
             | CliCommand::Advise { .. }
@@ -3674,6 +3765,49 @@ mod tests {
                 );
             }
             _ => panic!("expected config import-local command"),
+        }
+    }
+
+    #[test]
+    fn parses_config_runtime_auth_local_broker_command() {
+        let command = parse_cli([
+            "config",
+            "runtime-auth",
+            "--workspace=E:/demo",
+            "--agent=codex",
+            "--style=local-auth-broker",
+            "--endpoint=http://127.0.0.1:8787/v1",
+            "--profile-id=cc-switch-codex",
+            "--account-id=chatgpt-pro",
+            "--model=gpt-5.5",
+            "--api-format=openai_responses",
+            "--health-status=healthy",
+        ])
+        .expect("parse runtime auth command");
+
+        match command {
+            CliCommand::ConfigRuntimeAuth {
+                workspace,
+                agent,
+                runtime_auth,
+            } => {
+                assert_eq!(workspace, PathBuf::from("E:/demo"));
+                assert_eq!(agent, AgentKind::Codex);
+                assert_eq!(
+                    runtime_auth.style,
+                    coding_agent_monitor::RuntimeAuthStyle::LocalAuthBroker
+                );
+                assert_eq!(
+                    runtime_auth.endpoint.as_deref(),
+                    Some("http://127.0.0.1:8787/v1")
+                );
+                assert_eq!(runtime_auth.profile_id.as_deref(), Some("cc-switch-codex"));
+                assert_eq!(runtime_auth.account_id.as_deref(), Some("chatgpt-pro"));
+                assert_eq!(runtime_auth.model.as_deref(), Some("gpt-5.5"));
+                assert_eq!(runtime_auth.api_format.as_deref(), Some("openai_responses"));
+                assert_eq!(runtime_auth.health_status.as_deref(), Some("healthy"));
+            }
+            _ => panic!("expected runtime auth command"),
         }
     }
 

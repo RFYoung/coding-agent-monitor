@@ -69,9 +69,10 @@ pub use config::{
     AdapterConfig, AdapterOverride, AdvisorConfig, AdvisorCredentialSource,
     AdvisorEndpointConfigUpdate, AdvisorProviderConfig, AdvisorProviderKind, LocalAgentConfig,
     LocalAgentConfigImportOptions, LocalClaudeCodeConfig, LocalCodexConfig, PolicyConfig,
-    ProjectConfig, ProjectConfigError, ProjectConfigWriteError, SecurityConfig, VerificationScope,
-    VerifierConfig, import_coding_plan_advisor_credentials, import_local_agent_configs,
-    write_advisor_endpoint_config, write_verifier_config,
+    ProjectConfig, ProjectConfigError, ProjectConfigWriteError, RuntimeAuthConfig,
+    RuntimeAuthStyle, SecurityConfig, VerificationScope, VerifierConfig,
+    import_coding_plan_advisor_credentials, import_local_agent_configs,
+    write_adapter_runtime_auth_config, write_advisor_endpoint_config, write_verifier_config,
 };
 pub use dev_history::{
     DevHistoryAnalysisOptions, DevHistoryCount, DevHistoryError, DevHistoryFinding,
@@ -498,6 +499,8 @@ pub struct AdapterCapabilities {
     pub supports_readonly_mode: bool,
     pub supports_workspace_write_mode: bool,
     pub requires_external_sandbox: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_auth: Option<RuntimeAuthConfig>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
